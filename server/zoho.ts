@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { AppError } from "./logic.js";
-import { applyZohoImport } from "../shared/zoho-import.js";
+import { applyZohoImport, type ZohoBundle } from "../shared/zoho-import.js";
 import { allowedAccountsUrl, allowedApiUrl, dataCenterOf, emptyZoho, isDataCenter, REDIRECT_URI, ZOHO_SCOPES } from "../shared/zoho-public.js";
 import type { Clock, DataCenterId, Store, ZohoConnection, ZohoOrganization } from "../shared/types.js";
 
@@ -162,6 +162,24 @@ export function disconnectZoho(store: Store): Store {
 
 export function forgetZoho(store: Store): Store {
   return { ...store, zoho: emptyZoho() };
+}
+
+const BUNDLE_KEYS = ["currencies", "taxes", "contacts", "items", "estimates", "invoices", "payments"] as const;
+
+export function importZohoBundle(store: Store, bundle: ZohoBundle, clock: Clock): Store {
+  for (const key of BUNDLE_KEYS) {
+    if (!Array.isArray(bundle?.[key])) throw new AppError("Le lot Zoho est incomplet.");
+  }
+  const applied = applyZohoImport(store, bundle, clock);
+  return {
+    ...applied.store,
+    zoho: {
+      ...applied.store.zoho,
+      lastImport: applied.report,
+      lastImportAt: clock.now,
+      lastError: "",
+    },
+  };
 }
 
 export async function importFromZoho(store: Store, clock: Clock): Promise<Store> {

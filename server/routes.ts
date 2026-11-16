@@ -31,7 +31,7 @@ import {
 import type { CreditInput, CustomerInput, DocumentInput, ItemInput, PaymentInput } from "./logic.js";
 import { creditModel, invoiceModel, quoteModel, renderPdf } from "./pdf.js";
 import { readStore, resetStore, saveStore } from "./store.js";
-import { beginOAuth, disconnectZoho, finishOAuth, forgetZoho, importFromZoho, saveZohoConfig, selectOrganization } from "./zoho.js";
+import { beginOAuth, disconnectZoho, finishOAuth, forgetZoho, importFromZoho, importZohoBundle, saveZohoConfig, selectOrganization } from "./zoho.js";
 import { toPublicZoho } from "../shared/zoho-public.js";
 
 export const router = Router();
@@ -274,6 +274,33 @@ router.post("/zoho/organization", (req, res) => {
   const organizationId = typeof req.body?.organizationId === "string" ? req.body.organizationId : "";
   saveStore(selectOrganization(readStore(), organizationId));
   res.json(stateBody());
+});
+
+router.post("/zoho/bundle", (req, res) => {
+  const body = req.body ?? {};
+  let store = importZohoBundle(readStore(), body, systemClock());
+  const organizationId = typeof body.organizationId === "string" ? body.organizationId.trim().slice(0, 40) : "";
+  const organizationName = typeof body.organizationName === "string" ? body.organizationName.trim().slice(0, 160) : "";
+  if (organizationId || organizationName) {
+    store = {
+      ...store,
+      zoho: {
+        ...store.zoho,
+        organizationId: organizationId || store.zoho.organizationId,
+        organizationName: organizationName || store.zoho.organizationName,
+        dataCenter: store.zoho.dataCenter || "eu",
+      },
+    };
+  }
+  if (body.settings && typeof body.settings === "object") store = updateSettings(store, body.settings);
+  saveStore(store);
+  res.json({
+    imported: store.zoho.lastImport,
+    customers: store.customers.length,
+    items: store.items.length,
+    invoices: store.invoices.length,
+    payments: store.payments.length,
+  });
 });
 
 router.post("/zoho/import", async (_req, res, next) => {
