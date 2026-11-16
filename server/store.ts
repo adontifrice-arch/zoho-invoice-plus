@@ -5,7 +5,18 @@ import type { Store } from "../shared/types.js";
 import { normalizeStore } from "./normalize.js";
 import { seedStore } from "./seed.js";
 
-const file = path.join(process.cwd(), "data", "store.json");
+function resolveStoreFile(): string {
+  const override = process.env.STORE_FILE;
+  if (override) return override;
+  const durable = "/private/atrium-store.json";
+  const local = path.join(process.cwd(), "data", "store.json");
+  if (fs.existsSync(durable)) return durable;
+  if (fs.existsSync(local)) return local;
+  if (fs.existsSync("/private")) return durable;
+  return local;
+}
+
+const file = resolveStoreFile();
 
 function isStore(value: unknown): value is Store {
   if (!value || typeof value !== "object") return false;
