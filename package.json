@@ -8,7 +8,7 @@
     "dev": "tsx server/index.ts",
     "build": "vite build",
     "start": "tsx server/index.ts --production",
-    "test": "tsx server/logic.test.ts && tsx server/zoho.test.ts",
+    "test": "tsx server/logic.test.ts && tsx server/zoho.test.ts && tsx server/auth.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

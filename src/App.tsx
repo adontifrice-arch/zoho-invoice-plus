@@ -8,12 +8,14 @@ import { PaymentList } from "./pages/Payments";
 import { QuoteDetail, QuoteEditor, QuoteList } from "./pages/Quotes";
 import { SettingsPage } from "./pages/Settings";
 import { ZohoImportPage } from "./pages/ZohoImport";
+import { AuthGate } from "./auth";
 import { StoreProvider } from "./store";
 import { NotFound, Shell } from "./ui";
 
 export function App() {
   return (
-    <StoreProvider>
+    <AuthGate>
+      <StoreProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Shell />}>
@@ -41,6 +43,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-    </StoreProvider>
+      </StoreProvider>
+    </AuthGate>
   );
 }

@@ -5,6 +5,7 @@ import { formatMoney } from "../shared/format";
 import { invoiceStatusLabel, QUOTE_STATUS_LABEL } from "../shared/labels";
 import { invoiceBalance, invoiceViewStatus, quoteExpired } from "../shared/money";
 import type { Invoice, Quote } from "../shared/types";
+import { useAccount } from "./auth";
 import { useApp } from "./store";
 import type { AppState } from "./store";
 
@@ -22,6 +23,7 @@ const NAV = [
 
 export function Shell() {
   const { state, error, flash, reload } = useApp();
+  const account = useAccount();
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
@@ -63,7 +65,20 @@ export function Shell() {
             </NavLink>
           ))}
         </nav>
-        <p className="sidebar-foot">Les pièces restent enregistrées sur cette machine.</p>
+        <div className="sidebar-foot">
+          <p>{account}</p>
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            onClick={() => {
+              fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+                window.location.assign("/");
+              });
+            }}
+          >
+            Se déconnecter
+          </button>
+        </div>
       </aside>
       <div className="main">
         <div className="mobile-bar">

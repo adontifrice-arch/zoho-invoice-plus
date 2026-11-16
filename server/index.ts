@@ -1,10 +1,13 @@
 import express from "express";
 import path from "node:path";
+import { authRouter, requireAccount } from "./auth.js";
 import { apiError, router } from "./routes.js";
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
-app.use("/api", router);
+app.use("/api/auth", authRouter);
+app.use("/api", requireAccount, router);
 app.use(apiError);
 
 const port = Number(process.env.PORT || 4173);
