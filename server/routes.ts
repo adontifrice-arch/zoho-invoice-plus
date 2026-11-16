@@ -13,6 +13,7 @@ import {
   createQuote,
   deleteCreditNote,
   deleteInvoice,
+  removeDemoRecords,
   deletePayment,
   deleteQuote,
   duplicateInvoice,
@@ -74,6 +75,20 @@ router.put("/settings", (req, res) => {
 router.post("/demo/reset", (_req, res) => {
   resetStore();
   res.json(stateBody());
+});
+
+router.post("/demo/purge", (_req, res) => {
+  const { store, removed } = removeDemoRecords(readStore());
+  saveStore(store);
+  res.json({
+    removed,
+    customers: store.customers.length,
+    items: store.items.length,
+    quotes: store.quotes.length,
+    invoices: store.invoices.length,
+    creditNotes: store.creditNotes.length,
+    payments: store.payments.length,
+  });
 });
 
 router.post("/customers", (req, res) => {

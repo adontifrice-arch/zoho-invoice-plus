@@ -716,6 +716,44 @@ export function createPayment(
   return { store: markInvoiceEdited(stored, invoice.id), payment };
 }
 
+function keptFromZoho<T extends { zohoId: string | null }>(rows: T[]): T[] {
+  return rows.filter((row) => row.zohoId);
+}
+
+export function removeDemoRecords(store: Store): {
+  store: Store;
+  removed: { customers: number; items: number; quotes: number; invoices: number; creditNotes: number; payments: number };
+} {
+  const invoices = keptFromZoho(store.invoices);
+  const removedInvoiceIds = new Set(store.invoices.filter((row) => !row.zohoId).map((row) => row.id));
+  const quotes = keptFromZoho(store.quotes);
+  const quoteIds = new Set(quotes.map((row) => row.id));
+  const next: Store = {
+    ...store,
+    customers: keptFromZoho(store.customers),
+    items: keptFromZoho(store.items),
+    quotes,
+    invoices: invoices.map((invoice) =>
+      invoice.quoteId && !quoteIds.has(invoice.quoteId) ? { ...invoice, quoteId: null } : invoice,
+    ),
+    creditNotes: store.creditNotes.filter((note) => !removedInvoiceIds.has(note.invoiceId)),
+    payments: keptFromZoho(store.payments),
+    taxes: keptFromZoho(store.taxes),
+    currencies: keptFromZoho(store.currencies),
+  };
+  return {
+    store: next,
+    removed: {
+      customers: store.customers.length - next.customers.length,
+      items: store.items.length - next.items.length,
+      quotes: store.quotes.length - next.quotes.length,
+      invoices: store.invoices.length - next.invoices.length,
+      creditNotes: store.creditNotes.length - next.creditNotes.length,
+      payments: store.payments.length - next.payments.length,
+    },
+  };
+}
+
 export function deletePayment(store: Store, paymentId: string): Store {
   const payment = must(store.payments.find((entry) => entry.id === paymentId), "Paiement introuvable.");
   const next = ignoreZohoId(store, payment.zohoId);
