@@ -1,7 +1,7 @@
 import type { Line, LineInput, Item } from "../shared/types";
 import { UNITS, VAT_RATES } from "../shared/types";
 import { centsToInput, formatMoney, parseDecimal, parseMoneyToCents, quantityToInput } from "../shared/format";
-import { documentTotals, lineAmounts } from "../shared/money";
+import { documentTotals, lineAmounts, vatLabel } from "../shared/money";
 
 export type DraftLine = {
   key: string;
@@ -169,7 +169,7 @@ export function LineEditor({
               <label>
                 TVA
                 <select value={line.vatBps} onChange={(event) => update(line.key, { vatBps: Number(event.target.value) })}>
-                  {VAT_RATES.map((rate) => (
+                  {(VAT_RATES.some((rate) => rate.bps === line.vatBps) ? VAT_RATES : [...VAT_RATES, { bps: line.vatBps, label: vatLabel(line.vatBps) }]).map((rate) => (
                     <option key={rate.bps} value={rate.bps}>{rate.label}</option>
                   ))}
                 </select>

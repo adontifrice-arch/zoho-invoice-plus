@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { systemClock } from "../shared/clock.js";
 import type { Store } from "../shared/types.js";
+import { normalizeStore } from "./normalize.js";
 import { seedStore } from "./seed.js";
 
 const file = path.join(process.cwd(), "data", "store.json");
@@ -32,7 +33,9 @@ function load(): Store {
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
     if (!isStore(parsed)) throw new Error("invalid store");
-    return parsed;
+    const normalized = normalizeStore(parsed);
+    if (JSON.stringify(normalized) !== JSON.stringify(parsed)) atomicWrite(normalized);
+    return normalized;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "ENOENT") {
@@ -57,5 +60,16 @@ export function saveStore(next: Store): Store {
 }
 
 export function resetStore(): Store {
-  return saveStore(seedStore(systemClock()));
+  const current = readStore();
+  const seeded = seedStore(systemClock());
+  return saveStore({
+    ...seeded,
+    zoho: {
+      ...current.zoho,
+      lastImport: null,
+      lastImportAt: "",
+      lastError: "",
+      ignoredIds: [],
+    },
+  });
 }

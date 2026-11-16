@@ -69,16 +69,17 @@ function partyLines(store: Store, customerId: string): string[] {
   ].filter((line) => line && line.trim());
 }
 
-function rowsFrom(lines: Store["invoices"][number]["lines"]): Row[] {
+function rowsFrom(lines: Store["invoices"][number]["lines"], currency: string): Row[] {
+  const money = (cents: number) => formatMoneyPlain(cents, currency);
   return lines.map((entry) => {
     const ht = Math.round(entry.quantity * entry.unitPriceCents);
     return {
       description: entry.description,
       quantity: formatQtyPlain(entry.quantity),
       unit: entry.unit,
-      unitPrice: formatMoneyPlain(entry.unitPriceCents),
+      unitPrice: money(entry.unitPriceCents),
       vat: vatLabel(entry.vatBps),
-      amount: formatMoneyPlain(ht),
+      amount: money(ht),
     };
   });
 }
@@ -98,25 +99,27 @@ function footerOf(store: Store): string {
 }
 
 export function invoiceModel(store: Store, invoice: Invoice): PdfModel {
+  const currency = invoice.currencyCode || "EUR";
+  const money = (cents: number) => formatMoneyPlain(cents, currency);
   const totals = documentTotals(invoice.lines);
   const balance = invoiceBalance(invoice, store.creditNotes, store.payments);
   const payments = store.payments.filter((payment) => payment.invoiceId === invoice.id);
   const credits = store.creditNotes.filter((note) => note.invoiceId === invoice.id);
   const quote = invoice.quoteId ? store.quotes.find((entry) => entry.id === invoice.quoteId) : undefined;
   const rows: Total[] = [
-    { label: "Total HT", value: formatMoneyPlain(totals.ht) },
+    { label: "Total HT", value: money(totals.ht) },
     ...totals.vatBreakdown.map((entry) => ({
       label: `TVA ${vatLabel(entry.bps)}`,
-      value: formatMoneyPlain(entry.vat),
+      value: money(entry.vat),
     })),
-    { label: "Total TTC", value: formatMoneyPlain(totals.ttc), strong: true },
+    { label: "Total TTC", value: money(totals.ttc), strong: true },
   ];
-  if (balance.credited > 0) rows.push({ label: "Avoirs", value: formatMoneyPlain(-balance.credited) });
-  if (balance.paid > 0) rows.push({ label: "Déjà réglé", value: formatMoneyPlain(-balance.paid) });
+  if (balance.credited > 0) rows.push({ label: "Avoirs", value: money(-balance.credited) });
+  if (balance.paid > 0) rows.push({ label: "Déjà réglé", value: money(-balance.paid) });
   if (invoice.status !== "draft") {
     rows.push({
       label: balance.due > 0 ? "Reste à payer" : balance.due < 0 ? "À rembourser" : "Solde",
-      value: formatMoneyPlain(Math.abs(balance.due)),
+      value: money(Math.abs(balance.due)),
       strong: true,
       tone: balance.due > 0 ? "clay" : "pine",
     });
@@ -126,14 +129,14 @@ export function invoiceModel(store: Store, invoice: Invoice): PdfModel {
     blocks.push({
       title: "Paiements reçus",
       text: payments
-        .map((payment) => `${formatDate(payment.date)}  ·  ${paymentMethodLabel(payment.method)}  ·  ${formatMoneyPlain(payment.amountCents)}${payment.reference ? `  ·  ${payment.reference}` : ""}`)
+        .map((payment) => `${formatDate(payment.date)}  ·  ${paymentMethodLabel(payment.method)}  ·  ${money(payment.amountCents)}${payment.reference ? `  ·  ${payment.reference}` : ""}`)
         .join("\n"),
     });
   }
   if (credits.length > 0) {
     blocks.push({
       title: "Avoirs déduits",
-      text: credits.map((note) => `${note.number} du ${formatDate(note.issueDate)}  ·  ${formatMoneyPlain(documentTotals(note.lines).ttc)}`).join("\n"),
+      text: credits.map((note) => `${note.number} du ${formatDate(note.issueDate)}  ·  ${money(documentTotals(note.lines).ttc)}`).join("\n"),
     });
   }
   if (invoice.status !== "void" && store.settings.iban) {
@@ -156,7 +159,7 @@ export function invoiceModel(store: Store, invoice: Invoice): PdfModel {
     ],
     customerLabel: "FACTURÉ À",
     customer: partyLines(store, invoice.customerId),
-    rows: rowsFrom(invoice.lines),
+    rows: rowsFrom(invoice.lines, currency),
     totals: rows,
     blocks,
     footer: footerOf(store),
@@ -164,6 +167,8 @@ export function invoiceModel(store: Store, invoice: Invoice): PdfModel {
 }
 
 export function quoteModel(store: Store, quote: Quote): PdfModel {
+  const currency = quote.currencyCode || "EUR";
+  const money = (cents: number) => formatMoneyPlain(cents, currency);
   const totals = documentTotals(quote.lines);
   const blocks: PdfModel["blocks"] = [];
   if (quote.notes) blocks.push({ title: "Note", text: quote.notes });
@@ -179,11 +184,11 @@ export function quoteModel(store: Store, quote: Quote): PdfModel {
     ],
     customerLabel: "ADRESSÉ À",
     customer: partyLines(store, quote.customerId),
-    rows: rowsFrom(quote.lines),
+    rows: rowsFrom(quote.lines, currency),
     totals: [
-      { label: "Total HT", value: formatMoneyPlain(totals.ht) },
-      ...totals.vatBreakdown.map((entry) => ({ label: `TVA ${vatLabel(entry.bps)}`, value: formatMoneyPlain(entry.vat) })),
-      { label: "Total TTC", value: formatMoneyPlain(totals.ttc), strong: true },
+      { label: "Total HT", value: money(totals.ht) },
+      ...totals.vatBreakdown.map((entry) => ({ label: `TVA ${vatLabel(entry.bps)}`, value: money(entry.vat) })),
+      { label: "Total TTC", value: money(totals.ttc), strong: true },
     ],
     blocks,
     footer: footerOf(store),
@@ -191,8 +196,10 @@ export function quoteModel(store: Store, quote: Quote): PdfModel {
 }
 
 export function creditModel(store: Store, note: CreditNote): PdfModel {
-  const totals = documentTotals(note.lines);
   const invoice = store.invoices.find((entry) => entry.id === note.invoiceId);
+  const currency = invoice?.currencyCode || "EUR";
+  const money = (cents: number) => formatMoneyPlain(cents, currency);
+  const totals = documentTotals(note.lines);
   const blocks: PdfModel["blocks"] = [
     {
       title: "Imputation",
@@ -212,11 +219,11 @@ export function creditModel(store: Store, note: CreditNote): PdfModel {
     ],
     customerLabel: "ADRESSÉ À",
     customer: partyLines(store, note.customerId),
-    rows: rowsFrom(note.lines),
+    rows: rowsFrom(note.lines, currency),
     totals: [
-      { label: "Total HT", value: formatMoneyPlain(totals.ht) },
-      ...totals.vatBreakdown.map((entry) => ({ label: `TVA ${vatLabel(entry.bps)}`, value: formatMoneyPlain(entry.vat) })),
-      { label: "Total TTC", value: formatMoneyPlain(totals.ttc), strong: true },
+      { label: "Total HT", value: money(totals.ht) },
+      ...totals.vatBreakdown.map((entry) => ({ label: `TVA ${vatLabel(entry.bps)}`, value: money(entry.vat) })),
+      { label: "Total TTC", value: money(totals.ttc), strong: true },
     ],
     blocks,
     footer: footerOf(store),

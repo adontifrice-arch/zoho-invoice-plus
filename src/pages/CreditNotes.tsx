@@ -46,7 +46,7 @@ export function CreditNoteList() {
                     <td>{invoice?.number || "—"}</td>
                     <td>{formatDate(note.issueDate)}</td>
                     <td>{note.reason || "—"}</td>
-                    <td className="right"><Money cents={documentTotals(note.lines).ttc} /></td>
+                    <td className="right"><Money cents={documentTotals(note.lines).ttc} currency={invoice?.currencyCode} /></td>
                   </tr>
                 );
               })}
@@ -110,8 +110,8 @@ export function CreditNoteDetail() {
           <dt>Date</dt><dd>{formatDate(note.issueDate)}</dd>
           <dt>Motif</dt><dd>{note.reason || "—"}</dd>
         </dl>
-        <LinesTable lines={note.lines} />
-        <Totals ht={totals.ht} vat={totals.vatBreakdown} ttc={totals.ttc} />
+        <LinesTable lines={note.lines} currency={invoice?.currencyCode} />
+        <Totals currency={invoice?.currencyCode} ht={totals.ht} vat={totals.vatBreakdown} ttc={totals.ttc} />
         {note.notes ? <p style={{ marginTop: 16 }}>{note.notes}</p> : null}
       </section>
       {confirm ? (

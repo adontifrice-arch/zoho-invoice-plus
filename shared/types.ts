@@ -36,6 +36,8 @@ export type Line = {
 
 export type Customer = {
   id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
   name: string;
   company: string;
   email: string;
@@ -54,6 +56,8 @@ export type Customer = {
 
 export type Item = {
   id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
   name: string;
   description: string;
   sku: string;
@@ -67,6 +71,9 @@ export type Item = {
 
 export type Quote = {
   id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
+  currencyCode: string;
   number: string;
   customerId: string;
   status: QuoteStatus;
@@ -82,6 +89,9 @@ export type Quote = {
 
 export type Invoice = {
   id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
+  currencyCode: string;
   number: string;
   customerId: string;
   quoteId: string | null;
@@ -109,6 +119,9 @@ export type CreditNote = {
 
 export type Payment = {
   id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
+  currencyCode: string;
   number: string;
   invoiceId: string;
   customerId: string;
@@ -150,6 +163,88 @@ export type Settings = {
   nextPayment: number;
 };
 
+export type DataCenterId = "eu" | "com" | "in" | "com.au" | "jp" | "ca" | "sa" | "uk";
+
+export type ZohoOrganization = {
+  organizationId: string;
+  name: string;
+  currencyCode: string;
+};
+
+export type ImportTally = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+};
+
+export type ImportReport = {
+  customers: ImportTally;
+  items: ImportTally;
+  quotes: ImportTally;
+  invoices: ImportTally;
+  payments: ImportTally;
+  taxes: ImportTally;
+  currencies: ImportTally;
+  errors: string[];
+};
+
+export type ZohoConnection = {
+  dataCenter: DataCenterId;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  accessToken: string;
+  accessTokenExpiresAt: string;
+  apiDomain: string;
+  accountsServer: string;
+  oauthState: string;
+  organizationId: string;
+  organizationName: string;
+  organizations: ZohoOrganization[];
+  connectedAt: string;
+  lastImportAt: string;
+  lastImport: ImportReport | null;
+  lastError: string;
+  ignoredIds: string[];
+};
+
+export type PublicZoho = {
+  dataCenter: DataCenterId;
+  clientId: string;
+  hasClientSecret: boolean;
+  connected: boolean;
+  organizationId: string;
+  organizationName: string;
+  organizations: ZohoOrganization[];
+  connectedAt: string;
+  lastImportAt: string;
+  lastImport: ImportReport | null;
+  lastError: string;
+};
+
+export type Tax = {
+  id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
+  name: string;
+  rateBps: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Currency = {
+  id: string;
+  zohoId: string | null;
+  locallyEdited: boolean;
+  code: string;
+  name: string;
+  symbol: string;
+  isBase: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Store = {
   version: 1;
   settings: Settings;
@@ -159,7 +254,12 @@ export type Store = {
   invoices: Invoice[];
   creditNotes: CreditNote[];
   payments: Payment[];
+  taxes: Tax[];
+  currencies: Currency[];
+  zoho: ZohoConnection;
 };
+
+export type PublicStore = Omit<Store, "zoho"> & { zoho: PublicZoho };
 
 export type Clock = {
   today: string;

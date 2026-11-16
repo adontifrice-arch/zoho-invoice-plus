@@ -27,7 +27,7 @@ export function SettingsPage() {
       <section className="card" style={{ marginTop: 16 }}>
         <h2>Données de démonstration</h2>
         <p className="hint" style={{ marginTop: 8 }}>
-          Remplace les clients, articles, devis, factures, avoirs et paiements par le jeu d'exemple de l'Atelier Lumen.
+          Remplace les clients, articles, devis, factures, avoirs, paiements, taxes et devises par le jeu d'exemple. La connexion Zoho est conservée. Les fiches importées sont retirées.
         </p>
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="btn btn-danger" type="button" onClick={() => setConfirm(true)}>Réinitialiser les données</button>
@@ -36,7 +36,7 @@ export function SettingsPage() {
       {confirm ? (
         <ConfirmDialog
           title="Revenir aux données de démonstration ?"
-          body="Les modifications locales seront remplacées. Cette action ne se défait pas."
+          body="Les clients, pièces et fiches importées seront remplacés par l'exemple. La connexion Zoho, s'il y en a une, reste en place."
           confirmLabel="Réinitialiser"
           danger
           busy={busyReset}

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "./api";
-import type { Store } from "../shared/types";
+import type { PublicStore } from "../shared/types";
 
-export type AppState = Store & {
+export type AppState = PublicStore & {
   today: string;
   createdId?: string;
   deleted?: boolean;

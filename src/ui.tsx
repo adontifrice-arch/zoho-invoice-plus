@@ -16,6 +16,7 @@ const NAV = [
   { to: "/factures", label: "Factures", icon: "invoice" },
   { to: "/avoirs", label: "Avoirs", icon: "credit" },
   { to: "/paiements", label: "Paiements", icon: "coin" },
+  { to: "/import-zoho", label: "Import Zoho", icon: "cloud" },
   { to: "/reglages", label: "Réglages", icon: "sliders" },
 ] as const;
 
@@ -99,8 +100,8 @@ export function Field({ label, children, className, hint }: { label: string; chi
   );
 }
 
-export function Money({ cents, strong = false }: { cents: number; strong?: boolean }) {
-  return <span className={strong ? "money money-strong" : "money"}>{formatMoney(cents)}</span>;
+export function Money({ cents, currency = "EUR", strong = false }: { cents: number; currency?: string; strong?: boolean }) {
+  return <span className={strong ? "money money-strong" : "money"}>{formatMoney(cents, currency)}</span>;
 }
 
 export function InvoiceBadge({ state, invoice }: { state: AppState; invoice: Invoice }) {
@@ -197,5 +198,7 @@ function Icon({ name }: { name: (typeof NAV)[number]["icon"] }) {
       return <svg {...props}><ellipse cx="12" cy="7" rx="7" ry="3" /><path d="M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7" /></svg>;
     case "sliders":
       return <svg {...props}><path d="M4 8h16M4 16h16" /><circle cx="9" cy="8" r="2" /><circle cx="15" cy="16" r="2" /></svg>;
+    case "cloud":
+      return <svg {...props}><path d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.6A3.5 3.5 0 0 0 7 18z" /><path d="M12 11v5M9.8 14.2 12 16.4l2.2-2.2" /></svg>;
   }
 }

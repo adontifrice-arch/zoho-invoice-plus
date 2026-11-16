@@ -86,7 +86,7 @@ export function InvoiceList() {
                     <td>{formatDate(invoice.issueDate)}</td>
                     <td>{formatDate(invoice.dueDate)}</td>
                     <td><InvoiceBadge state={state} invoice={invoice} /></td>
-                    <td className="right">{invoice.status === "issued" ? <Money cents={balance.due} /> : "—"}</td>
+                    <td className="right">{invoice.status === "issued" ? <Money cents={balance.due} currency={invoice.currencyCode} /> : "—"}</td>
                   </tr>
                 );
               })}
@@ -245,8 +245,9 @@ export function InvoiceDetail() {
           <dt>Échéance</dt><dd>{formatDate(invoice.dueDate)}</dd>
           <dt>Statut</dt><dd>{invoiceStatusLabel(status, balance.due)}</dd>
         </dl>
-        <LinesTable lines={invoice.lines} />
+        <LinesTable lines={invoice.lines} currency={invoice.currencyCode} />
         <Totals
+          currency={invoice.currencyCode}
           ht={balance.ht}
           vat={balance.vatBreakdown}
           ttc={balance.ttc}
@@ -270,7 +271,7 @@ export function InvoiceDetail() {
                 <span className="customer-sub">{formatDate(payment.date)} · {paymentMethodLabel(payment.method)}{payment.reference ? ` · ${payment.reference}` : ""}</span>
               </div>
               <div className="actions">
-                <Money cents={payment.amountCents} />
+                <Money cents={payment.amountCents} currency={payment.currencyCode} />
                 <button className="btn btn-danger btn-small" type="button" onClick={() => run(async () => {
                   await mutate(`/api/payments/${payment.id}`, { method: "DELETE" });
                   notify("Paiement supprimé.");
@@ -284,7 +285,7 @@ export function InvoiceDetail() {
           {credits.length === 0 ? <p className="empty">Aucun avoir.</p> : credits.map((note) => (
             <Link className="list-link" key={note.id} to={`/avoirs/${note.id}`}>
               <strong>{note.number}</strong>
-              <span className="list-meta"><Money cents={documentTotals(note.lines).ttc} /></span>
+              <span className="list-meta"><Money cents={documentTotals(note.lines).ttc} currency={invoice.currencyCode} /></span>
               <small>{formatDate(note.issueDate)}{note.reason ? ` · ${note.reason}` : ""}</small>
             </Link>
           ))}
@@ -296,7 +297,7 @@ export function InvoiceDetail() {
           title={confirm === "issue" ? "Émettre cette facture ?" : confirm === "void" ? "Annuler cette facture ?" : "Supprimer ce brouillon ?"}
           body={
             confirm === "issue"
-              ? "Elle recevra un numéro définitif et ne sera plus modifiable. L'envoi par e-mail n'est pas encore branché."
+              ? "Un numéro définitif lui est attribué s'il n'en a pas déjà un. Elle ne sera plus modifiable. L'envoi par e-mail n'est pas encore branché."
               : confirm === "void"
                 ? "Le numéro est conservé. La facture reste visible comme annulée."
                 : "Le brouillon sera effacé. Aucun numéro de facture n'a été consommé."

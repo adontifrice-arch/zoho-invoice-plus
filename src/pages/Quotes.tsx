@@ -74,7 +74,7 @@ export function QuoteList() {
                     <td>{formatDate(quote.issueDate)}</td>
                     <td>{formatDate(quote.validUntil)}</td>
                     <td><QuoteBadge state={state} quote={quote} /></td>
-                    <td className="right"><Money cents={documentTotals(quote.lines).ttc} /></td>
+                    <td className="right"><Money cents={documentTotals(quote.lines).ttc} currency={quote.currencyCode} /></td>
                   </tr>
                 );
               })}
@@ -222,8 +222,8 @@ export function QuoteDetail() {
           <dt>Validité</dt><dd>{formatDate(quote.validUntil)}</dd>
           <dt>Statut</dt><dd>{QUOTE_STATUS_LABEL[quote.status]}</dd>
         </dl>
-        <LinesTable lines={quote.lines} />
-        <Totals ht={totals.ht} vat={totals.vatBreakdown} ttc={totals.ttc} />
+        <LinesTable lines={quote.lines} currency={quote.currencyCode} />
+        <Totals currency={quote.currencyCode} ht={totals.ht} vat={totals.vatBreakdown} ttc={totals.ttc} />
         {quote.notes ? <p style={{ marginTop: 16 }}>{quote.notes}</p> : null}
         {quote.terms ? <p className="hint" style={{ marginTop: 8 }}>{quote.terms}</p> : null}
       </section>
@@ -250,7 +250,7 @@ export function QuoteDetail() {
   }
 }
 
-export function LinesTable({ lines }: { lines: { id: string; description: string; quantity: number; unit: string; unitPriceCents: number; vatBps: number }[] }) {
+export function LinesTable({ lines, currency = "EUR" }: { lines: { id: string; description: string; quantity: number; unit: string; unitPriceCents: number; vatBps: number }[]; currency?: string }) {
   return (
     <div className="table-wrap" style={{ marginTop: 16 }}>
       <table>
@@ -270,9 +270,9 @@ export function LinesTable({ lines }: { lines: { id: string; description: string
               <td style={{ whiteSpace: "pre-wrap" }}>{line.description}</td>
               <td className="right">{formatQty(line.quantity)}</td>
               <td>{line.unit}</td>
-              <td className="right"><Money cents={line.unitPriceCents} /></td>
+              <td className="right"><Money cents={line.unitPriceCents} currency={currency} /></td>
               <td className="right">{vatLabel(line.vatBps)}</td>
-              <td className="right"><Money cents={lineAmounts(line).ht} /></td>
+              <td className="right"><Money cents={lineAmounts(line).ht} currency={currency} /></td>
             </tr>
           ))}
         </tbody>
@@ -285,24 +285,26 @@ export function Totals({
   ht,
   vat,
   ttc,
+  currency = "EUR",
   extra,
 }: {
   ht: number;
   vat: { bps: number; vat: number }[];
   ttc: number;
+  currency?: string;
   extra?: { label: string; cents: number; strong?: boolean; className?: string }[];
 }) {
   return (
     <div className="totals" style={{ marginTop: 16 }}>
-      <div className="total-row"><span>Total HT</span><Money cents={ht} /></div>
+      <div className="total-row"><span>Total HT</span><Money cents={ht} currency={currency} /></div>
       {vat.map((entry) => (
-        <div className="total-row" key={entry.bps}><span>TVA {vatLabel(entry.bps)}</span><Money cents={entry.vat} /></div>
+        <div className="total-row" key={entry.bps}><span>TVA {vatLabel(entry.bps)}</span><Money cents={entry.vat} currency={currency} /></div>
       ))}
-      <div className="total-row strong"><span>Total TTC</span><Money cents={ttc} /></div>
+      <div className="total-row strong"><span>Total TTC</span><Money cents={ttc} currency={currency} /></div>
       {extra?.map((entry) => (
         <div className={entry.strong ? "total-row strong" : "total-row"} key={entry.label}>
           <span>{entry.label}</span>
-          <span className={entry.className}><Money cents={entry.cents} /></span>
+          <span className={entry.className}><Money cents={entry.cents} currency={currency} /></span>
         </div>
       ))}
     </div>

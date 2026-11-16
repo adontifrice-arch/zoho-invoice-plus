@@ -49,25 +49,30 @@ export function Dashboard() {
       <section className="kpis">
         <article className="kpi">
           <span>Impayé</span>
-          <strong>{formatMoney(stats.unpaidCents)}</strong>
+          <strong>{formatMoney(stats.unpaidCents, stats.baseCurrency)}</strong>
           <em>{stats.unpaidCount} facture{stats.unpaidCount > 1 ? "s" : ""}</em>
         </article>
         <article className="kpi kpi-alert">
           <span>En retard</span>
-          <strong>{formatMoney(stats.overdueCents)}</strong>
+          <strong>{formatMoney(stats.overdueCents, stats.baseCurrency)}</strong>
           <em>{stats.overdueCount} facture{stats.overdueCount > 1 ? "s" : ""}</em>
         </article>
         <article className="kpi kpi-good">
           <span>Encaissé ce mois</span>
-          <strong>{formatMoney(stats.collectedThisMonth)}</strong>
+          <strong>{formatMoney(stats.collectedThisMonth, stats.baseCurrency)}</strong>
           <em>Paiements datés de ce mois</em>
         </article>
         <article className="kpi">
           <span>Facturé ce mois</span>
-          <strong>{formatMoney(stats.billedThisMonth)}</strong>
+          <strong>{formatMoney(stats.billedThisMonth, stats.baseCurrency)}</strong>
           <em>Émissions moins avoirs</em>
         </article>
       </section>
+      {stats.foreignUnpaid.length > 0 ? (
+        <p className="hint">
+          Les totaux ci-dessus sont en {stats.baseCurrency}. Soldes ouverts dans d'autres devises, sans conversion : {stats.foreignUnpaid.map((row) => formatMoney(row.cents, row.code)).join(", ")}.
+        </p>
+      ) : null}
 
       <div className="split">
         <section className="card">
@@ -80,7 +85,7 @@ export function Dashboard() {
             return (
               <Link className="list-link" key={invoice.id} to={`/factures/${invoice.id}`}>
                 <strong>{invoice.number}</strong>
-                <span className="list-meta"><Money cents={balance.due} /></span>
+                <span className="list-meta"><Money cents={balance.due} currency={invoice.currencyCode} /></span>
                 <small>{customer ? customerTitle(customer) : "Client"} · échéance {relativeDay(invoice.dueDate, state.today)}</small>
                 <span className="list-meta"><InvoiceBadge state={state} invoice={invoice} /></span>
               </Link>
@@ -100,7 +105,7 @@ export function Dashboard() {
             return (
               <Link className="list-link" key={quote.id} to={`/devis/${quote.id}`}>
                 <strong>{quote.number}</strong>
-                <span className="list-meta"><Money cents={documentTotals(quote.lines).ttc} /></span>
+                <span className="list-meta"><Money cents={documentTotals(quote.lines).ttc} currency={quote.currencyCode} /></span>
                 <small>{customer ? customerTitle(customer) : "Client"} · {relativeDay(quote.validUntil, state.today)}</small>
                 <span className="list-meta"><QuoteBadge state={state} quote={quote} /></span>
               </Link>
@@ -120,7 +125,7 @@ export function Dashboard() {
           return (
             <Link className="list-link" key={payment.id} to={invoice ? `/factures/${invoice.id}` : "/paiements"}>
               <strong>{payment.number}</strong>
-              <span className="list-meta"><Money cents={payment.amountCents} /></span>
+              <span className="list-meta"><Money cents={payment.amountCents} currency={payment.currencyCode} /></span>
               <small>
                 {customer ? customerTitle(customer) : "Client"} · {paymentMethodLabel(payment.method)}
                 {invoice?.number ? ` · ${invoice.number}` : ""}

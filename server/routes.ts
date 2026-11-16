@@ -31,6 +31,8 @@ import {
 import type { CreditInput, CustomerInput, DocumentInput, ItemInput, PaymentInput } from "./logic.js";
 import { creditModel, invoiceModel, quoteModel, renderPdf } from "./pdf.js";
 import { readStore, resetStore, saveStore } from "./store.js";
+import { beginOAuth, disconnectZoho, finishOAuth, forgetZoho, importFromZoho, saveZohoConfig, selectOrganization } from "./zoho.js";
+import { toPublicZoho } from "../shared/zoho-public.js";
 
 export const router = Router();
 
@@ -39,7 +41,13 @@ function param(value: string | string[]): string {
 }
 
 function stateBody(store: Store = readStore()) {
-  return { today: systemClock().today, ...store };
+  return { today: systemClock().today, ...store, zoho: toPublicZoho(store.zoho) };
+}
+
+function queryText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return "";
 }
 
 function sendPdf(res: Response, filename: string, pdf: Buffer): void {
@@ -220,6 +228,75 @@ router.post("/invoices/:id/payments", (req, res) => {
 router.delete("/payments/:id", (req, res) => {
   saveStore(deletePayment(readStore(), param(req.params.id)));
   res.json({ ...stateBody(), deleted: true });
+});
+
+router.post("/zoho/config", (req, res) => {
+  saveStore(saveZohoConfig(readStore(), req.body ?? {}));
+  res.json(stateBody());
+});
+
+router.get("/zoho/start", (_req, res) => {
+  try {
+    const begun = beginOAuth(readStore());
+    saveStore(begun.store);
+    res.redirect(begun.url);
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "Connexion Zoho impossible.";
+    const current = readStore();
+    saveStore({ ...current, zoho: { ...current.zoho, lastError: message } });
+    res.redirect("/import-zoho");
+  }
+});
+
+router.get("/zoho/callback", async (req, res) => {
+  try {
+    const next = await finishOAuth(
+      readStore(),
+      {
+        error: queryText(req.query.error),
+        code: queryText(req.query.code),
+        state: queryText(req.query.state),
+        location: queryText(req.query.location),
+        accountsServer: queryText(req.query["accounts-server"]),
+      },
+      systemClock().now,
+    );
+    saveStore(next);
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "La connexion Zoho a échoué.";
+    const current = readStore();
+    saveStore({ ...current, zoho: { ...current.zoho, oauthState: "", lastError: message } });
+  }
+  res.redirect("/import-zoho");
+});
+
+router.post("/zoho/organization", (req, res) => {
+  const organizationId = typeof req.body?.organizationId === "string" ? req.body.organizationId : "";
+  saveStore(selectOrganization(readStore(), organizationId));
+  res.json(stateBody());
+});
+
+router.post("/zoho/import", async (_req, res, next) => {
+  try {
+    saveStore(await importFromZoho(readStore(), systemClock()));
+    res.json(stateBody());
+  } catch (error) {
+    if (error instanceof AppError) {
+      const current = readStore();
+      saveStore({ ...current, zoho: { ...current.zoho, lastError: error.message } });
+    }
+    next(error);
+  }
+});
+
+router.post("/zoho/disconnect", (_req, res) => {
+  saveStore(disconnectZoho(readStore()));
+  res.json(stateBody());
+});
+
+router.post("/zoho/forget", (_req, res) => {
+  saveStore(forgetZoho(readStore()));
+  res.json(stateBody());
 });
 
 export function apiError(err: unknown, _req: Request, res: Response, next: NextFunction): void {

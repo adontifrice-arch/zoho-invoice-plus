@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server/index.ts",
-    "test": "tsx server/logic.test.ts",
+    "test": "tsx server/logic.test.ts && tsx server/zoho.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 import { isVatBps, addDays, defaultInvoiceTerms, defaultQuoteTerms, documentTotals, invoiceBalance } from "../shared/money.js";
+import { ignoreZohoId } from "../shared/zoho-import.js";
 import { PAYMENT_METHODS } from "../shared/types.js";
 import type {
   Clock,
@@ -210,7 +211,7 @@ function allocate(store: Store, kind: "invoice" | "quote" | "credit" | "payment"
   return { settings, number };
 }
 
-function customerFrom(input: CustomerInput, previous?: Customer): Omit<Customer, "id" | "createdAt" | "updatedAt"> {
+function customerFrom(input: CustomerInput, previous?: Customer): Omit<Customer, "id" | "createdAt" | "updatedAt" | "zohoId" | "locallyEdited"> {
   const name = clip(input.name, 160, "Le nom");
   const company = clip(input.company, 160, "La société");
   if (!name && !company) throw new AppError("Indiquez un nom ou une société.");
@@ -234,6 +235,8 @@ function customerFrom(input: CustomerInput, previous?: Customer): Omit<Customer,
 export function createCustomer(store: Store, input: CustomerInput, clock: Clock): { store: Store; customer: Customer } {
   const customer: Customer = {
     id: newId("cus"),
+    zohoId: null,
+    locallyEdited: false,
     ...customerFrom(input),
     createdAt: clock.now,
     updatedAt: clock.now,
@@ -248,7 +251,7 @@ export function updateCustomer(
   clock: Clock,
 ): { store: Store; customer: Customer } {
   const current = must(store.customers.find((entry) => entry.id === customerId), "Client introuvable.");
-  const customer: Customer = { ...current, ...customerFrom(input, current), updatedAt: clock.now };
+  const customer: Customer = { ...current, ...customerFrom(input, current), locallyEdited: true, updatedAt: clock.now };
   return {
     store: { ...store, customers: store.customers.map((entry) => (entry.id === customerId ? customer : entry)) },
     customer,
@@ -267,21 +270,22 @@ export function removeCustomer(store: Store, customerId: string, clock: Clock): 
     store.creditNotes.some((note) => note.customerId === customerId) ||
     store.payments.some((payment) => payment.customerId === customerId);
   if (used) {
-    const customer = { ...current, archived: true, updatedAt: clock.now };
+    const customer = { ...current, archived: true, locallyEdited: true, updatedAt: clock.now };
     return {
       store: { ...store, customers: store.customers.map((entry) => (entry.id === customerId ? customer : entry)) },
       deleted: false,
       archived: true,
     };
   }
+  const next = ignoreZohoId(store, current.zohoId);
   return {
-    store: { ...store, customers: store.customers.filter((entry) => entry.id !== customerId) },
+    store: { ...next, customers: next.customers.filter((entry) => entry.id !== customerId) },
     deleted: true,
     archived: false,
   };
 }
 
-function itemFrom(input: ItemInput, previous?: Item): Omit<Item, "id" | "createdAt" | "updatedAt"> {
+function itemFrom(input: ItemInput, previous?: Item): Omit<Item, "id" | "createdAt" | "updatedAt" | "zohoId" | "locallyEdited"> {
   const name = clip(input.name, 160, "Le nom");
   if (!name) throw new AppError("L'article doit avoir un nom.");
   const unit = clip(input.unit, 20, "L'unité");
@@ -307,13 +311,13 @@ function itemFrom(input: ItemInput, previous?: Item): Omit<Item, "id" | "created
 }
 
 export function createItem(store: Store, input: ItemInput, clock: Clock): { store: Store; item: Item } {
-  const item: Item = { id: newId("item"), ...itemFrom(input), createdAt: clock.now, updatedAt: clock.now };
+  const item: Item = { id: newId("item"), zohoId: null, locallyEdited: false, ...itemFrom(input), createdAt: clock.now, updatedAt: clock.now };
   return { store: { ...store, items: [...store.items, item] }, item };
 }
 
 export function updateItem(store: Store, itemId: string, input: ItemInput, clock: Clock): { store: Store; item: Item } {
   const current = must(store.items.find((entry) => entry.id === itemId), "Article introuvable.");
-  const item: Item = { ...current, ...itemFrom(input, current), updatedAt: clock.now };
+  const item: Item = { ...current, ...itemFrom(input, current), locallyEdited: true, updatedAt: clock.now };
   return { store: { ...store, items: store.items.map((entry) => (entry.id === itemId ? item : entry)) }, item };
 }
 
@@ -323,15 +327,16 @@ export function removeItem(store: Store, itemId: string, clock: Clock): { store:
     doc.lines.some((line) => line.itemId === itemId),
   );
   if (used) {
-    const item = { ...current, active: false, updatedAt: clock.now };
+    const item = { ...current, active: false, locallyEdited: true, updatedAt: clock.now };
     return {
       store: { ...store, items: store.items.map((entry) => (entry.id === itemId ? item : entry)) },
       deleted: false,
       archived: true,
     };
   }
+  const next = ignoreZohoId(store, current.zohoId);
   return {
-    store: { ...store, items: store.items.filter((entry) => entry.id !== itemId) },
+    store: { ...next, items: next.items.filter((entry) => entry.id !== itemId) },
     deleted: true,
     archived: false,
   };
@@ -350,6 +355,9 @@ export function createQuote(store: Store, input: DocumentInput, clock: Clock): {
   const { settings, number } = allocate(store, "quote", issueDate);
   const quote: Quote = {
     id: newId("quo"),
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: "EUR",
     number,
     customerId: customer.id,
     status: "draft",
@@ -392,6 +400,7 @@ export function updateQuote(store: Store, quoteId: string, input: DocumentInput,
     lines: normalizeLines(input.lines, store),
     notes: clip(input.notes, 4000, "Les notes"),
     terms: clip(input.terms, 4000, "Les conditions"),
+    locallyEdited: true,
     updatedAt: clock.now,
   };
   return { store: { ...store, quotes: store.quotes.map((entry) => (entry.id === quoteId ? quote : entry)) }, quote };
@@ -424,7 +433,7 @@ export function setQuoteStatus(
       throw new AppError("Supprimez la facture brouillon liée avant de modifier ce statut.");
     }
   }
-  const quote: Quote = { ...current, status, updatedAt: clock.now };
+  const quote: Quote = { ...current, status, locallyEdited: true, updatedAt: clock.now };
   return { store: { ...store, quotes: store.quotes.map((entry) => (entry.id === quoteId ? quote : entry)) }, quote };
 }
 
@@ -432,7 +441,8 @@ export function deleteQuote(store: Store, quoteId: string): Store {
   const quote = must(store.quotes.find((entry) => entry.id === quoteId), "Devis introuvable.");
   if (quote.status !== "draft") throw new AppError("Seul un devis brouillon peut être supprimé.");
   if (quote.invoiceId) throw new AppError("Ce devis est lié à une facture.");
-  return { ...store, quotes: store.quotes.filter((entry) => entry.id !== quoteId) };
+  const next = ignoreZohoId(store, quote.zohoId);
+  return { ...next, quotes: next.quotes.filter((entry) => entry.id !== quoteId) };
 }
 
 export function convertQuote(store: Store, quoteId: string, clock: Clock): { store: Store; invoice: Invoice } {
@@ -447,6 +457,9 @@ export function convertQuote(store: Store, quoteId: string, clock: Clock): { sto
   requireCustomer(store, quote.customerId, true);
   const invoice: Invoice = {
     id: newId("inv"),
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: quote.currencyCode || "EUR",
     number: "",
     customerId: quote.customerId,
     quoteId: quote.id,
@@ -459,7 +472,7 @@ export function convertQuote(store: Store, quoteId: string, clock: Clock): { sto
     createdAt: clock.now,
     updatedAt: clock.now,
   };
-  const nextQuote: Quote = { ...quote, status: "accepted", invoiceId: invoice.id, updatedAt: clock.now };
+  const nextQuote: Quote = { ...quote, status: "accepted", invoiceId: invoice.id, locallyEdited: true, updatedAt: clock.now };
   return {
     store: {
       ...store,
@@ -477,6 +490,8 @@ export function duplicateQuote(store: Store, quoteId: string, clock: Clock): { s
   const copy: Quote = {
     ...quote,
     id: newId("quo"),
+    zohoId: null,
+    locallyEdited: false,
     number,
     status: "draft",
     issueDate,
@@ -496,6 +511,9 @@ export function createInvoice(store: Store, input: DocumentInput, clock: Clock):
   if (dueDate < issueDate) throw new AppError("L'échéance ne peut pas précéder la date de facture.");
   const invoice: Invoice = {
     id: newId("inv"),
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: "EUR",
     number: "",
     customerId: customer.id,
     quoteId: null,
@@ -531,6 +549,7 @@ export function updateInvoice(
     lines: normalizeLines(input.lines, store),
     notes: clip(input.notes, 4000, "Les notes"),
     terms: clip(input.terms, 4000, "Les conditions"),
+    locallyEdited: true,
     updatedAt: clock.now,
   };
   return {
@@ -544,10 +563,18 @@ export function issueInvoice(store: Store, invoiceId: string, clock: Clock): { s
   if (current.status !== "draft") throw new AppError("Seule une facture brouillon peut être émise.");
   if (current.lines.length === 0) throw new AppError("Ajoutez au moins une ligne.");
   requireCustomer(store, current.customerId, true);
-  const { settings, number } = allocate(store, "invoice", current.issueDate);
-  const invoice: Invoice = { ...current, status: "issued", number, updatedAt: clock.now };
+  let settings = store.settings;
+  let number = current.number.trim();
+  if (!number) {
+    const allocated = allocate(store, "invoice", current.issueDate);
+    settings = allocated.settings;
+    number = allocated.number;
+  }
+  const invoice: Invoice = { ...current, status: "issued", number, locallyEdited: true, updatedAt: clock.now };
   const quotes = store.quotes.map((quote) =>
-    quote.id === invoice.quoteId ? { ...quote, status: "invoiced" as const, invoiceId: invoice.id, updatedAt: clock.now } : quote,
+    quote.id === invoice.quoteId
+      ? { ...quote, status: "invoiced" as const, invoiceId: invoice.id, locallyEdited: true, updatedAt: clock.now }
+      : quote,
   );
   return {
     store: {
@@ -569,10 +596,10 @@ export function voidInvoice(store: Store, invoiceId: string, clock: Clock): { st
   if (store.creditNotes.some((note) => note.invoiceId === current.id)) {
     throw new AppError("Supprimez les avoirs avant d'annuler la facture.");
   }
-  const invoice: Invoice = { ...current, status: "void", updatedAt: clock.now };
+  const invoice: Invoice = { ...current, status: "void", locallyEdited: true, updatedAt: clock.now };
   const quotes = store.quotes.map((quote) => {
     if (quote.id !== current.quoteId && quote.invoiceId !== current.id) return quote;
-    return { ...quote, status: "accepted" as const, invoiceId: null, updatedAt: clock.now };
+    return { ...quote, status: "accepted" as const, invoiceId: null, locallyEdited: true, updatedAt: clock.now };
   });
   return {
     store: {
@@ -587,10 +614,11 @@ export function voidInvoice(store: Store, invoiceId: string, clock: Clock): { st
 export function deleteInvoice(store: Store, invoiceId: string, clock: Clock): Store {
   const invoice = must(store.invoices.find((entry) => entry.id === invoiceId), "Facture introuvable.");
   if (invoice.status !== "draft") throw new AppError("Seule une facture brouillon peut être supprimée.");
-  const quotes = store.quotes.map((quote) =>
-    quote.invoiceId === invoice.id ? { ...quote, invoiceId: null, updatedAt: clock.now } : quote,
+  const next = ignoreZohoId(store, invoice.zohoId);
+  const quotes = next.quotes.map((quote) =>
+    quote.invoiceId === invoice.id ? { ...quote, invoiceId: null, locallyEdited: true, updatedAt: clock.now } : quote,
   );
-  return { ...store, quotes, invoices: store.invoices.filter((entry) => entry.id !== invoiceId) };
+  return { ...next, quotes, invoices: next.invoices.filter((entry) => entry.id !== invoiceId) };
 }
 
 export function duplicateInvoice(store: Store, invoiceId: string, clock: Clock): { store: Store; invoice: Invoice } {
@@ -599,6 +627,8 @@ export function duplicateInvoice(store: Store, invoiceId: string, clock: Clock):
   const copy: Invoice = {
     ...invoice,
     id: newId("inv"),
+    zohoId: null,
+    locallyEdited: false,
     number: "",
     quoteId: null,
     status: "draft",
@@ -640,12 +670,14 @@ export function createCreditNote(
     notes: clip(input.notes, 4000, "Les notes"),
     createdAt: clock.now,
   };
-  return { store: { ...store, settings, creditNotes: [...store.creditNotes, creditNote] }, creditNote };
+  const stored = { ...store, settings, creditNotes: [...store.creditNotes, creditNote] };
+  return { store: markInvoiceEdited(stored, invoice.id), creditNote };
 }
 
 export function deleteCreditNote(store: Store, creditNoteId: string): Store {
   const note = must(store.creditNotes.find((entry) => entry.id === creditNoteId), "Avoir introuvable.");
-  return { ...store, creditNotes: store.creditNotes.filter((entry) => entry.id !== note.id) };
+  const stored = { ...store, creditNotes: store.creditNotes.filter((entry) => entry.id !== note.id) };
+  return markInvoiceEdited(stored, note.invoiceId);
 }
 
 export function createPayment(
@@ -667,6 +699,9 @@ export function createPayment(
   const { settings, number } = allocate(store, "payment", date);
   const payment: Payment = {
     id: newId("pay"),
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: invoice.currencyCode || "EUR",
     number,
     invoiceId: invoice.id,
     customerId: invoice.customerId,
@@ -677,12 +712,22 @@ export function createPayment(
     notes: clip(input.notes, 2000, "Les notes"),
     createdAt: clock.now,
   };
-  return { store: { ...store, settings, payments: [...store.payments, payment] }, payment };
+  const stored = { ...store, settings, payments: [...store.payments, payment] };
+  return { store: markInvoiceEdited(stored, invoice.id), payment };
 }
 
 export function deletePayment(store: Store, paymentId: string): Store {
   const payment = must(store.payments.find((entry) => entry.id === paymentId), "Paiement introuvable.");
-  return { ...store, payments: store.payments.filter((entry) => entry.id !== payment.id) };
+  const next = ignoreZohoId(store, payment.zohoId);
+  const stored = { ...next, payments: next.payments.filter((entry) => entry.id !== payment.id) };
+  return markInvoiceEdited(stored, payment.invoiceId);
+}
+
+function markInvoiceEdited(store: Store, invoiceId: string): Store {
+  return {
+    ...store,
+    invoices: store.invoices.map((invoice) => (invoice.id === invoiceId ? { ...invoice, locallyEdited: true } : invoice)),
+  };
 }
 
 function prefixOf(value: unknown, fallback: string): string {

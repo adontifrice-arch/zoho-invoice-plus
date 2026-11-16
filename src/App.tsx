@@ -7,6 +7,7 @@ import { ItemList } from "./pages/Items";
 import { PaymentList } from "./pages/Payments";
 import { QuoteDetail, QuoteEditor, QuoteList } from "./pages/Quotes";
 import { SettingsPage } from "./pages/Settings";
+import { ZohoImportPage } from "./pages/ZohoImport";
 import { StoreProvider } from "./store";
 import { NotFound, Shell } from "./ui";
 
@@ -34,6 +35,7 @@ export function App() {
             <Route path="avoirs" element={<CreditNoteList />} />
             <Route path="avoirs/:id" element={<CreditNoteDetail />} />
             <Route path="paiements" element={<PaymentList />} />
+            <Route path="import-zoho" element={<ZohoImportPage />} />
             <Route path="reglages" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>

@@ -1,5 +1,6 @@
 import { addDays, documentTotals, defaultInvoiceTerms, defaultQuoteTerms } from "../shared/money.js";
-import type { Clock, CreditNote, Customer, Invoice, Item, Line, Payment, Quote, Settings, Store } from "../shared/types.js";
+import type { Clock, CreditNote, Invoice, Item, Line, Payment, Quote, Settings, Store } from "../shared/types.js";
+import { emptyZoho } from "../shared/zoho-public.js";
 
 function stamp(date: string): string {
   return `${date}T08:00:00.000Z`;
@@ -63,7 +64,7 @@ export function seedStore(clock: Clock): Store {
   const invoiceTerms = defaultInvoiceTerms(settings.paymentTermDays);
   const quoteTerms = defaultQuoteTerms(settings.quoteValidityDays);
 
-  const customers: Customer[] = [
+  const customers = [
     {
       id: "cus_soies",
       company: "Hôtel des Soies",
@@ -306,6 +307,9 @@ export function seedStore(clock: Clock): Store {
   const mistralInvoice = invoiceDoc("inv_mistral", 5, "cus_mistral", "quo_mistral", "issued", mistralIssue, addDays(mistralIssue, 30), mistralLines, "Avoir émis pour deux plans non posés.", invoiceTerms, clock);
   const draftInvoice: Invoice = {
     id: "inv_soies_draft",
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: "EUR",
     number: "",
     customerId: "cus_soies",
     quoteId: null,
@@ -343,7 +347,7 @@ export function seedStore(clock: Clock): Store {
   const orbePaid = Math.min(Math.round(orbeTtc / 2 / 100) * 100, orbeTtc - 100);
   const mistralDue = documentTotals(mistralLines).ttc - documentTotals(mistralCreditLines).ttc;
 
-  const payments: Payment[] = [
+  const payments = [
     {
       id: "pay_soies",
       number: numbered("PAY", day(-96), 1),
@@ -382,15 +386,19 @@ export function seedStore(clock: Clock): Store {
     },
   ];
 
+  const origin = { zohoId: null, locallyEdited: false };
   return {
     version: 1,
     settings,
-    customers,
-    items,
-    quotes,
-    invoices,
+    customers: customers.map((customer) => ({ ...customer, ...origin })),
+    items: items.map((item) => ({ ...item, ...origin })),
+    quotes: quotes.map((quote) => ({ ...quote, ...origin, currencyCode: "EUR" })),
+    invoices: invoices.map((invoice) => ({ ...invoice, ...origin, currencyCode: "EUR" })),
     creditNotes,
-    payments,
+    payments: payments.map((payment) => ({ ...payment, ...origin, currencyCode: "EUR" })) as Payment[],
+    taxes: [],
+    currencies: [],
+    zoho: emptyZoho(),
   };
 }
 
@@ -406,6 +414,8 @@ function item(
 ): Item {
   return {
     id,
+    zohoId: null,
+    locallyEdited: false,
     name,
     description,
     sku,
@@ -432,6 +442,9 @@ function quote(
 ): Quote {
   return {
     id,
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: "EUR",
     number: numbered("DEV", issueDate, sequence),
     customerId,
     status,
@@ -461,6 +474,9 @@ function invoiceDoc(
 ): Invoice {
   return {
     id,
+    zohoId: null,
+    locallyEdited: false,
+    currencyCode: "EUR",
     number: status === "draft" ? "" : numbered("FAC", issueDate, sequence),
     customerId,
     quoteId,

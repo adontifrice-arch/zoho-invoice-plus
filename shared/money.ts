@@ -1,12 +1,15 @@
-import type { CreditNote, Invoice, InvoiceViewStatus, Line, Payment, Quote, VatBps } from "./types.js";
+import type { CreditNote, Invoice, InvoiceViewStatus, Line, Payment, Quote } from "./types.js";
 import { VAT_RATES } from "./types.js";
 
-export function isVatBps(value: number): value is VatBps {
-  return VAT_RATES.some((rate) => rate.bps === value);
+export function isVatBps(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 10000;
 }
 
 export function vatLabel(bps: number): string {
-  return VAT_RATES.find((rate) => rate.bps === bps)?.label ?? `${bps / 100} %`;
+  const known = VAT_RATES.find((rate) => rate.bps === bps);
+  if (known) return known.label;
+  const text = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(bps / 100);
+  return `${text} %`;
 }
 
 export function lineAmounts(line: Pick<Line, "quantity" | "unitPriceCents" | "vatBps">): {

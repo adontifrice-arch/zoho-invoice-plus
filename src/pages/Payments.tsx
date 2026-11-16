@@ -76,7 +76,7 @@ export function PaymentList() {
                     <td>{customer ? customerTitle(customer) : "—"}</td>
                     <td>{invoice ? <Link to={`/factures/${invoice.id}`}>{invoice.number || "Brouillon"}</Link> : "—"}</td>
                     <td>{paymentMethodLabel(payment.method)}{payment.reference ? <span className="customer-sub">{payment.reference}</span> : null}</td>
-                    <td className="right"><Money cents={payment.amountCents} /></td>
+                    <td className="right"><Money cents={payment.amountCents} currency={payment.currencyCode} /></td>
                     <td className="right">
                       <button className="btn btn-danger btn-small" type="button" onClick={(event) => { event.stopPropagation(); setConfirmId(payment.id); }}>
                         Retirer

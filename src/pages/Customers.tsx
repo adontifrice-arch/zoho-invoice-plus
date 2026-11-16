@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { cityLine, customerSubtitle, customerTitle, formatDate } from "../../shared/format";
+import { cityLine, customerSubtitle, customerTitle, formatDate, formatMoney } from "../../shared/format";
 import { documentTotals } from "../../shared/money";
-import { customerBalance } from "../../shared/stats";
+import { openDueByCurrency } from "../../shared/stats";
 import type { Customer } from "../../shared/types";
 import { useApp } from "../store";
 import { ConfirmDialog, Field, InvoiceBadge, Missing, Money, QuoteBadge, useTitle } from "../ui";
@@ -59,7 +59,10 @@ export function CustomerList() {
             </thead>
             <tbody>
               {rows.map((customer) => {
-                const balance = customerBalance(state, customer.id);
+                const dues = openDueByCurrency(state, customer.id);
+                const owed = dues.some((row) => row.cents > 0);
+                const credit = dues.some((row) => row.cents < 0);
+                const label = dues.length === 0 ? formatMoney(0) : dues.map((row) => formatMoney(row.cents, row.code)).join(" · ");
                 return (
                   <tr key={customer.id} className="clickable" onClick={() => navigate(`/clients/${customer.id}`)}>
                     <td>
@@ -69,7 +72,7 @@ export function CustomerList() {
                     </td>
                     <td>{customer.city || "—"}</td>
                     <td>{customer.email || "—"}</td>
-                    <td className="right"><span className={balance > 0 ? "money debt" : balance < 0 ? "money credit" : "money"}>{formatBalance(balance)}</span></td>
+                    <td className="right"><span className={owed ? "money debt" : credit ? "money credit" : "money"}>{label}</span></td>
                   </tr>
                 );
               })}
@@ -79,10 +82,6 @@ export function CustomerList() {
       </div>
     </>
   );
-}
-
-function formatBalance(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(cents / 100);
 }
 
 export function CustomerForm({ mode }: { mode: "create" | "edit" }) {
@@ -193,7 +192,7 @@ export function CustomerDetail() {
   if (!state) return null;
   if (!customer) return <Missing title="Client introuvable" to="/clients" label="Retour aux clients" />;
 
-  const balance = customerBalance(state, customer.id);
+  const dues = openDueByCurrency(state, customer.id);
   const quotes = state.quotes.filter((quote) => quote.customerId === customer.id);
   const invoices = state.invoices.filter((invoice) => invoice.customerId === customer.id);
 
@@ -252,8 +251,10 @@ export function CustomerDetail() {
         </section>
         <section className="card">
           <h2>Solde ouvert</h2>
-          <p style={{ marginTop: 10 }}><Money cents={balance} strong /></p>
-          <p className="hint" style={{ marginTop: 6 }}>Somme des restes à payer sur les factures émises. Un montant négatif est à rembourser.</p>
+          <p style={{ marginTop: 10 }}>
+            {dues.length === 0 ? <Money cents={0} strong /> : dues.map((row) => <span key={row.code} style={{ display: "block" }}><Money cents={row.cents} currency={row.code} strong /></span>)}
+          </p>
+          <p className="hint" style={{ marginTop: 6 }}>Restes à payer des factures émises, par devise. Les devises ne sont pas converties.</p>
         </section>
       </div>
       <div className="split" style={{ marginTop: 16 }}>
@@ -264,7 +265,7 @@ export function CustomerDetail() {
               <strong>{invoice.number || "Brouillon"}</strong>
               <span className="list-meta"><InvoiceBadge state={state} invoice={invoice} /></span>
               <small>{formatDate(invoice.issueDate)}</small>
-              <span className="list-meta"><Money cents={documentTotals(invoice.lines).ttc} /></span>
+              <span className="list-meta"><Money cents={documentTotals(invoice.lines).ttc} currency={invoice.currencyCode} /></span>
             </Link>
           ))}
         </section>
@@ -275,7 +276,7 @@ export function CustomerDetail() {
               <strong>{quote.number}</strong>
               <span className="list-meta"><QuoteBadge state={state} quote={quote} /></span>
               <small>{formatDate(quote.issueDate)}</small>
-              <span className="list-meta"><Money cents={documentTotals(quote.lines).ttc} /></span>
+              <span className="list-meta"><Money cents={documentTotals(quote.lines).ttc} currency={quote.currencyCode} /></span>
             </Link>
           ))}
         </section>

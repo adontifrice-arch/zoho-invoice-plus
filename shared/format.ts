@@ -1,16 +1,23 @@
 import type { Customer } from "./types.js";
 
-export function formatMoney(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(cents / 100);
+export function formatMoney(cents: number, currency = "EUR"): string {
+  const code = /^[A-Z]{3}$/.test(currency) ? currency : "EUR";
+  try {
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: code }).format(cents / 100);
+  } catch {
+    return formatMoneyPlain(cents, code);
+  }
 }
 
-export function formatMoneyPlain(cents: number): string {
+export function formatMoneyPlain(cents: number, currency = "EUR"): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));
   const euros = Math.trunc(abs / 100);
   const frac = abs % 100;
   const grouped = String(euros).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${sign}${grouped},${String(frac).padStart(2, "0")} €`;
+  const number = `${sign}${grouped},${String(frac).padStart(2, "0")}`;
+  if (!currency || currency === "EUR") return `${number} €`;
+  return `${number} ${currency}`;
 }
 
 export function formatDate(iso: string): string {
