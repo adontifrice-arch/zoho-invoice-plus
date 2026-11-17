@@ -8,7 +8,7 @@ export const OTG_PROFILE = {
   postalCode: "",
   city: "",
   country: "France",
-  email: "hichem.boudaya@goldshard.fr",
+  email: "facturation@otg.services",
   phone: "",
   website: "otg.services",
   siret: "",
@@ -20,24 +20,33 @@ export const OTG_PROFILE = {
 } as const;
 
 export const OTG_CONTACTS: MailContact[] = [
-  { id: "mail_yassmine", name: "Yassmine Tlili", email: "yassmine.tlili@goldshard.fr" },
-  { id: "mail_hichem", name: "Hichem Boudaya", email: "hichem.boudaya@goldshard.fr" },
+  { id: "mail_facturation", name: "Facturation OTG", email: "facturation@otg.services" },
 ];
 
 const DEMO_NAME = "Atelier Lumen";
 const DEMO_EMAIL = "bonjour@atelierlumen.fr";
 const DEMO_SIRET = "849 302 117 00024";
 
+function isLegacyBrandEmail(email: string): boolean {
+  const value = email.trim().toLowerCase();
+  return !value || value === DEMO_EMAIL || value.includes("goldshard.") || value.includes("@gs.");
+}
+
+function isLegacyWebsite(website: string): boolean {
+  const value = website.trim().toLowerCase();
+  return !value || value === "atelierlumen.fr" || value.includes("goldshard.");
+}
+
 export function withOtgCompany(settings: Settings): Settings {
   const demo = settings.companyName === DEMO_NAME || settings.email === DEMO_EMAIL || settings.siret === DEMO_SIRET;
-  const contacts = settings.mailContacts ?? [];
+  const contacts = (settings.mailContacts ?? []).filter((entry) => !isLegacyBrandEmail(entry.email));
   const missing = OTG_CONTACTS.filter((entry) => !contacts.some((current) => current.email.toLowerCase() === entry.email));
   return {
     ...settings,
     companyName: OTG_PROFILE.companyName,
     tagline: OTG_PROFILE.tagline,
-    website: settings.website && settings.website !== "atelierlumen.fr" ? settings.website : OTG_PROFILE.website,
-    email: settings.email && settings.email !== DEMO_EMAIL ? settings.email : OTG_PROFILE.email,
+    website: isLegacyWebsite(settings.website) ? OTG_PROFILE.website : settings.website,
+    email: isLegacyBrandEmail(settings.email) ? OTG_PROFILE.email : settings.email,
     legalForm: demo ? OTG_PROFILE.legalForm : settings.legalForm,
     address: demo ? OTG_PROFILE.address : settings.address,
     postalCode: demo ? OTG_PROFILE.postalCode : settings.postalCode,

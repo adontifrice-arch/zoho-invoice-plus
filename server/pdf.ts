@@ -1,21 +1,93 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { customerSubtitle, customerTitle, formatDate, formatMoneyPlain, formatQtyPlain } from "../shared/format.js";
 import { paymentMethodLabel } from "../shared/labels.js";
 import { documentTotals, invoiceBalance, vatLabel } from "../shared/money.js";
 import type { CreditNote, Invoice, Quote, Store } from "../shared/types.js";
 
-const SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
-const SANS_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-const SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
-const SERIF_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf";
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+function firstExisting(...candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+type PdfFonts = {
+  sans: string;
+  sansBold: string;
+  serif: string;
+  serifBold: string;
+  register: (doc: PDFKit.PDFDocument) => void;
+};
+
+function resolveFonts(): PdfFonts {
+  const sans = firstExisting(
+    path.join(HERE, "fonts", "DejaVuSans.ttf"),
+    path.join(process.cwd(), "server", "fonts", "DejaVuSans.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "C:\\Windows\\Fonts\\segoeui.ttf",
+    "C:\\Windows\\Fonts\\arial.ttf",
+  );
+  const sansBold = firstExisting(
+    path.join(HERE, "fonts", "DejaVuSans-Bold.ttf"),
+    path.join(process.cwd(), "server", "fonts", "DejaVuSans-Bold.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "C:\\Windows\\Fonts\\segoeuib.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+  );
+  const serif = firstExisting(
+    path.join(HERE, "fonts", "DejaVuSerif.ttf"),
+    path.join(process.cwd(), "server", "fonts", "DejaVuSerif.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+    "C:\\Windows\\Fonts\\georgia.ttf",
+    "C:\\Windows\\Fonts\\times.ttf",
+  );
+  const serifBold = firstExisting(
+    path.join(HERE, "fonts", "DejaVuSerif-Bold.ttf"),
+    path.join(process.cwd(), "server", "fonts", "DejaVuSerif-Bold.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "C:\\Windows\\Fonts\\georgiab.ttf",
+    "C:\\Windows\\Fonts\\timesbd.ttf",
+  );
+  if (sans && sansBold && serif && serifBold) {
+    return {
+      sans: "Sans",
+      sansBold: "SansBold",
+      serif: "Serif",
+      serifBold: "SerifBold",
+      register(doc) {
+        doc.registerFont("Sans", sans);
+        doc.registerFont("SansBold", sansBold);
+        doc.registerFont("Serif", serif);
+        doc.registerFont("SerifBold", serifBold);
+      },
+    };
+  }
+  // GoDaddy / containers without DejaVu: PDFKit core fonts (WinAnsi, accents OK).
+  return {
+    sans: "Helvetica",
+    sansBold: "Helvetica-Bold",
+    serif: "Times-Roman",
+    serifBold: "Times-Bold",
+    register() {},
+  };
+}
+
+const FONTS = resolveFonts();
 
 const INK = "#1a1f1c";
 const MUTED = "#5c665f";
 const PINE = "#0e5f68";
+const GOLD = "#8f7340";
 const LINE = "#d5cfc3";
 const BAND = "#f3efe6";
 const CLAY = "#8e3b32";
 const MARGIN = 46;
+const MARK_SIZE = 36;
 
 type Row = {
   description: string;
@@ -306,16 +378,37 @@ export function renderPdf(store: Store, model: PdfModel): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
     try {
-      doc.registerFont("Sans", SANS);
-      doc.registerFont("SansBold", SANS_BOLD);
-      doc.registerFont("Serif", SERIF);
-      doc.registerFont("SerifBold", SERIF_BOLD);
+      FONTS.register(doc);
       draw(doc, store.settings.companyName, model);
       doc.end();
     } catch (error) {
       reject(error);
     }
   });
+}
+
+function drawBrandMark(doc: PDFKit.PDFDocument, x: number, y: number, size = MARK_SIZE): void {
+  const scale = size / 64;
+  doc.save();
+  doc.translate(x, y);
+  doc.scale(scale);
+  doc.lineJoin("round");
+  doc.roundedRect(6.5, 5.5, 51, 53, 4).lineWidth(2.5).strokeColor(INK).stroke();
+  doc
+    .path("M6.5 10.2C6.5 7.6 8.6 5.5 11.2 5.5H17.5V58.5H11.2C8.6 58.5 6.5 56.4 6.5 53.8V10.2Z")
+    .fill(PINE);
+  doc
+    .path("M44 5.5H52.8C55.4 5.5 57.5 7.6 57.5 10.2V18")
+    .lineWidth(2.5)
+    .lineCap("round")
+    .strokeColor(GOLD)
+    .stroke();
+  doc.strokeColor(INK).lineWidth(2.25).lineCap("round");
+  doc.moveTo(26, 24).lineTo(49, 24).stroke();
+  doc.moveTo(26, 33).lineTo(44, 33).stroke();
+  doc.moveTo(26, 42).lineTo(36, 42).stroke();
+  doc.roundedRect(45.25, 37.25, 9.5, 9.5, 1.6).lineWidth(1.75).strokeColor(PINE).stroke();
+  doc.restore();
 }
 
 function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
@@ -328,23 +421,25 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
   const leftWidth = width * 0.56;
   const rightX = MARGIN + width * 0.58;
   const rightWidth = width * 0.42;
+  const brandX = MARGIN + MARK_SIZE + 12;
 
-  doc.fillColor(INK).font("SerifBold").fontSize(20).text(company, MARGIN, y, { width: leftWidth });
+  drawBrandMark(doc, MARGIN, y - 2, MARK_SIZE);
+  doc.fillColor(INK).font(FONTS.serifBold).fontSize(20).text(company, brandX, y, { width: leftWidth - MARK_SIZE - 12 });
   const companyBottom = doc.y;
-  doc.font("SerifBold").fontSize(15).fillColor(PINE).text(model.title, rightX, y, { width: rightWidth, align: "right" });
-  const afterTitle = Math.max(companyBottom, doc.y, y + 24);
+  doc.font(FONTS.serifBold).fontSize(15).fillColor(PINE).text(model.title, rightX, y, { width: rightWidth, align: "right" });
+  const afterTitle = Math.max(companyBottom, doc.y, y + MARK_SIZE);
 
-  doc.font("Sans").fontSize(9).fillColor(MUTED);
+  doc.font(FONTS.sans).fontSize(9).fillColor(MUTED);
   const sellerText = model.seller.join("\n");
   const sellerHeight = doc.heightOfString(sellerText, { width: leftWidth });
   doc.text(sellerText, MARGIN, afterTitle + 4, { width: leftWidth });
 
   let metaY = afterTitle + 4;
-  doc.font("SansBold").fontSize(11).fillColor(INK).text(model.number, rightX, metaY, { width: rightWidth, align: "right" });
+  doc.font(FONTS.sansBold).fontSize(11).fillColor(INK).text(model.number, rightX, metaY, { width: rightWidth, align: "right" });
   metaY = doc.y + 4;
   for (const entry of model.meta) {
-    doc.font("Sans").fontSize(8.5).fillColor(MUTED).text(entry.label, rightX, metaY, { width: rightWidth * 0.46, align: "left" });
-    doc.font("Sans").fontSize(8.5).fillColor(INK).text(entry.value, rightX + rightWidth * 0.46, metaY, {
+    doc.font(FONTS.sans).fontSize(8.5).fillColor(MUTED).text(entry.label, rightX, metaY, { width: rightWidth * 0.46, align: "left" });
+    doc.font(FONTS.sans).fontSize(8.5).fillColor(INK).text(entry.value, rightX + rightWidth * 0.46, metaY, {
       width: rightWidth * 0.54,
       align: "right",
     });
@@ -355,10 +450,10 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
   doc.strokeColor(PINE).lineWidth(1.4).moveTo(MARGIN, y).lineTo(right, y).stroke();
   y += 16;
 
-  doc.font("SansBold").fontSize(8).fillColor(MUTED).text(model.customerLabel, MARGIN, y, { characterSpacing: 0.6 });
+  doc.font(FONTS.sansBold).fontSize(8).fillColor(MUTED).text(model.customerLabel, MARGIN, y, { characterSpacing: 0.6 });
   y += 14;
   model.customer.forEach((line, index) => {
-    doc.font(index === 0 ? "SansBold" : "Sans").fontSize(index === 0 ? 12 : 9.5).fillColor(INK);
+    doc.font(index === 0 ? FONTS.sansBold : FONTS.sans).fontSize(index === 0 ? 12 : 9.5).fillColor(INK);
     doc.text(line, MARGIN, y, { width: width * 0.7 });
     y = doc.y + 1;
   });
@@ -376,7 +471,7 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
   const drawHeader = () => {
     doc.rect(MARGIN, y, width, 20).fill(BAND);
     let x = MARGIN;
-    doc.font("SansBold").fontSize(8).fillColor(MUTED);
+    doc.font(FONTS.sansBold).fontSize(8).fillColor(MUTED);
     for (const column of columns) {
       doc.text(column.label, x + 4, y + 6, { width: column.width - 8, align: column.align });
       x += column.width;
@@ -389,7 +484,7 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
     doc.page.margins.bottom = 8;
     doc.save();
     doc.strokeColor(LINE).lineWidth(0.6).moveTo(MARGIN, footerY).lineTo(right, footerY).stroke();
-    doc.font("Sans").fontSize(7).fillColor(MUTED).text(model.footer, MARGIN, footerY + 5, {
+    doc.font(FONTS.sans).fontSize(7).fillColor(MUTED).text(model.footer, MARGIN, footerY + 5, {
       width,
       height: 20,
       align: "center",
@@ -409,16 +504,16 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
 
   drawHeader();
 
-  doc.font("Sans").fontSize(9);
+  doc.font(FONTS.sans).fontSize(9);
   model.rows.forEach((row, index) => {
-    const descriptionHeight = doc.font("Sans").fontSize(9).heightOfString(row.description, { width: columns[0].width - 8 });
+    const descriptionHeight = doc.font(FONTS.sans).fontSize(9).heightOfString(row.description, { width: columns[0].width - 8 });
     const rowHeight = Math.max(descriptionHeight, 12) + 10;
     ensure(rowHeight);
     if (index % 2 === 1) doc.rect(MARGIN, y, width, rowHeight).fill("#fcfaf6");
     const values = [row.description, row.quantity, row.unit, row.unitPrice, row.vat, row.amount];
     let x = MARGIN;
     values.forEach((value, cell) => {
-      doc.fillColor(INK).font(cell === 0 ? "Sans" : "Sans").fontSize(9).text(value, x + 4, y + 5, {
+      doc.fillColor(INK).font(FONTS.sans).fontSize(9).text(value, x + 4, y + 5, {
         width: columns[cell].width - 8,
         align: columns[cell].align,
       });
@@ -435,7 +530,7 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
   const boxX = right - boxWidth;
   model.totals.forEach((total) => {
     const color = total.tone === "clay" ? CLAY : total.tone === "pine" ? PINE : INK;
-    doc.font(total.strong ? "SansBold" : "Sans").fontSize(total.strong ? 11 : 9).fillColor(MUTED);
+    doc.font(total.strong ? FONTS.sansBold : FONTS.sans).fontSize(total.strong ? 11 : 9).fillColor(MUTED);
     doc.text(total.label, boxX, y, { width: 110, align: "left" });
     doc.fillColor(color).text(total.value, boxX + 110, y, { width: 130, align: "right" });
     y += total.strong ? 18 : 15;
@@ -443,12 +538,12 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
 
   y += 8;
   for (const block of model.blocks) {
-    doc.font("Sans").fontSize(9);
+    doc.font(FONTS.sans).fontSize(9);
     const textHeight = doc.heightOfString(block.text, { width: width - 8 });
     ensure(textHeight + 28);
-    doc.font("SansBold").fontSize(8).fillColor(MUTED).text(block.title.toUpperCase(), MARGIN, y);
+    doc.font(FONTS.sansBold).fontSize(8).fillColor(MUTED).text(block.title.toUpperCase(), MARGIN, y);
     y = doc.y + 3;
-    doc.font("Sans").fontSize(9).fillColor(INK).text(block.text, MARGIN, y, { width });
+    doc.font(FONTS.sans).fontSize(9).fillColor(INK).text(block.text, MARGIN, y, { width });
     y = doc.y + 10;
   }
 
@@ -456,7 +551,7 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
     doc.save();
     doc.fillColor(model.stamp === "ANNULÉE" || model.stamp === "REFUSÉ" ? CLAY : PINE);
     doc.fillOpacity(0.13);
-    doc.font("SansBold").fontSize(46);
+    doc.font(FONTS.sansBold).fontSize(46);
     doc.rotate(-28, { origin: [doc.page.width / 2, 460] });
     doc.text(model.stamp, 90, 430, { lineBreak: false, width: 420, height: 54 });
     doc.restore();
