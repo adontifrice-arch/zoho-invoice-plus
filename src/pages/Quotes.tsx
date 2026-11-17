@@ -200,7 +200,7 @@ export function QuoteDetail() {
         </div>
       </header>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
-      {quote.status === "draft" ? <p className="hint" style={{ marginBottom: 12 }}>Marquer comme envoyé ne déclenche pas d'e-mail. L'envoi viendra avec un compte d'expédition.</p> : null}
+      {quote.status === "draft" ? <p className="hint" style={{ marginBottom: 12 }}>Marquer comme envoyé ne déclenche pas d'e-mail. L'envoi des devis arrivera dans une prochaine version.</p> : null}
       <div className="actions" style={{ marginBottom: 16 }}>
         {quote.status === "draft" ? <button className="btn btn-ghost btn-small" type="button" disabled={busy} onClick={() => run(() => status("sent", "Devis marqué comme envoyé."))}>Marquer comme envoyé</button> : null}
         {quote.status === "sent" ? <button className="btn btn-ghost btn-small" type="button" disabled={busy} onClick={() => run(() => status("accepted", "Devis accepté."))}>Accepter</button> : null}

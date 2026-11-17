@@ -59,6 +59,7 @@ export function seedStore(clock: Clock): Store {
     nextQuote: 10,
     nextCredit: 2,
     nextPayment: 4,
+    mailContacts: [],
   };
 
   const invoiceTerms = defaultInvoiceTerms(settings.paymentTermDays);
@@ -390,7 +391,21 @@ export function seedStore(clock: Clock): Store {
   return {
     version: 1,
     settings,
-    customers: customers.map((customer) => ({ ...customer, ...origin })),
+    customers: customers.map((customer) => ({
+      ...customer,
+      ...origin,
+      contacts: customer.email
+        ? [
+            {
+              id: `ctc_${customer.id}`,
+              name: customer.name,
+              email: customer.email,
+              role: "",
+              isPrimary: true,
+            },
+          ]
+        : [],
+    })),
     items: items.map((item) => ({ ...item, ...origin })),
     quotes: quotes.map((quote) => ({ ...quote, ...origin, currencyCode: "EUR" })),
     invoices: invoices.map((invoice) => ({ ...invoice, ...origin, currencyCode: "EUR" })),

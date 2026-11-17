@@ -1,4 +1,20 @@
-import type { Currency, Customer, DataCenterId, ImportReport, ImportTally, Invoice, Item, Payment, Quote, Store, Tax, ZohoOrganization } from "../shared/types.js";
+import type {
+  Currency,
+  Customer,
+  CustomerContact,
+  DataCenterId,
+  ImportReport,
+  ImportTally,
+  Invoice,
+  Item,
+  MailContact,
+  Payment,
+  Quote,
+  Settings,
+  Store,
+  Tax,
+  ZohoOrganization,
+} from "../shared/types.js";
 import { emptyZoho, isDataCenter } from "../shared/zoho-public.js";
 
 export function normalizeStore(value: unknown): Store {
@@ -8,8 +24,8 @@ export function normalizeStore(value: unknown): Store {
   }
   return {
     version: 1,
-    settings: raw.settings as Store["settings"],
-    customers: rows(raw.customers, (row) => withOrigin(row) as Customer),
+    settings: normalizeSettings(raw.settings as Record<string, unknown>),
+    customers: rows(raw.customers, normalizeCustomer),
     items: rows(raw.items, (row) => withOrigin(row) as Item),
     quotes: rows(raw.quotes, (row) => withMoney(row) as Quote),
     invoices: rows(raw.invoices, (row) => withMoney(row) as Invoice),
@@ -19,6 +35,83 @@ export function normalizeStore(value: unknown): Store {
     currencies: rows(raw.currencies, normalizeCurrency),
     zoho: normalizeZoho(raw.zoho),
   };
+}
+
+function normalizeSettings(raw: Record<string, unknown>): Settings {
+  const settings = raw as unknown as Settings;
+  return {
+    ...settings,
+    mailContacts: normalizeMailContacts(raw.mailContacts),
+  };
+}
+
+function normalizeCustomer(row: Record<string, unknown>): Customer | null {
+  if (typeof row.id !== "string") return null;
+  const base = withOrigin(row) as Customer;
+  const contacts = normalizeCustomerContacts(row.contacts, typeof row.email === "string" ? row.email : "", typeof row.name === "string" ? row.name : "");
+  const primary = contacts.find((entry) => entry.isPrimary) ?? contacts[0];
+  return {
+    ...base,
+    contacts,
+    email: primary?.email || (typeof row.email === "string" ? row.email : ""),
+  };
+}
+
+export function normalizeCustomerContacts(value: unknown, fallbackEmail = "", fallbackName = ""): CustomerContact[] {
+  const rows = Array.isArray(value)
+    ? value.flatMap((entry, index) => {
+        const raw = record(entry);
+        if (!raw) return [];
+        const email = typeof raw.email === "string" ? raw.email.trim().toLowerCase() : "";
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return [];
+        return [
+          {
+            id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 40) : `ctc_${index}`,
+            name: typeof raw.name === "string" ? raw.name.slice(0, 160) : "",
+            email: email.slice(0, 160),
+            role: typeof raw.role === "string" ? raw.role.slice(0, 80) : "",
+            isPrimary: raw.isPrimary === true,
+          },
+        ];
+      })
+    : [];
+  if (rows.length === 0 && fallbackEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fallbackEmail)) {
+    return [
+      {
+        id: "ctc_primary",
+        name: fallbackName.slice(0, 160),
+        email: fallbackEmail.trim().toLowerCase().slice(0, 160),
+        role: "",
+        isPrimary: true,
+      },
+    ];
+  }
+  if (rows.length === 0) return [];
+  if (!rows.some((entry) => entry.isPrimary)) rows[0].isPrimary = true;
+  let primarySeen = false;
+  return rows.map((entry) => {
+    if (!entry.isPrimary) return entry;
+    if (primarySeen) return { ...entry, isPrimary: false };
+    primarySeen = true;
+    return entry;
+  });
+}
+
+export function normalizeMailContacts(value: unknown): MailContact[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    const raw = record(entry);
+    if (!raw) return [];
+    const email = typeof raw.email === "string" ? raw.email.trim().toLowerCase() : "";
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return [];
+    return [
+      {
+        id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 40) : `mail_${index}`,
+        name: typeof raw.name === "string" ? raw.name.slice(0, 160) : "",
+        email: email.slice(0, 160),
+      },
+    ];
+  }).slice(0, 40);
 }
 
 function normalizeZoho(value: unknown): Store["zoho"] {

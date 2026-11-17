@@ -8,6 +8,7 @@ export type AppState = PublicStore & {
   createdId?: string;
   deleted?: boolean;
   archived?: boolean;
+  mail?: { configured: boolean; from: string };
 };
 
 type StoreValue = {

@@ -293,13 +293,39 @@ function mapContact(raw: unknown, now: string): Customer | null {
   const billing = isRecord(raw.billing_address) ? raw.billing_address : {};
   const name = text(raw.contact_name, 160);
   const company = text(raw.company_name, 160);
+  const contacts = persons.flatMap((person, index) => {
+    const email = emailOf(person.email);
+    if (!email) return [];
+    const personName = [text(person.first_name, 80), text(person.last_name, 80)].filter(Boolean).join(" ").slice(0, 160);
+    return [
+      {
+        id: nid("ctc"),
+        name: personName || name,
+        email,
+        role: text(person.designation ?? person.department, 80),
+        isPrimary: person.is_primary_contact === true || (!persons.some((entry) => entry.is_primary_contact === true) && index === 0),
+      },
+    ];
+  });
+  const fallbackEmail = emailOf(primary?.email ?? raw.email);
+  if (contacts.length === 0 && fallbackEmail) {
+    contacts.push({
+      id: nid("ctc"),
+      name: name || company || "",
+      email: fallbackEmail,
+      role: "",
+      isPrimary: true,
+    });
+  }
+  if (contacts.length > 0 && !contacts.some((entry) => entry.isPrimary)) contacts[0].isPrimary = true;
+  const primaryContact = contacts.find((entry) => entry.isPrimary) ?? contacts[0];
   return {
     id: nid("cus"),
     zohoId,
     locallyEdited: false,
     name: name || company || "Client Zoho",
     company,
-    email: emailOf(primary?.email ?? raw.email),
+    email: primaryContact?.email || fallbackEmail,
     phone: text(primary?.phone ?? primary?.mobile ?? raw.phone ?? raw.mobile, 40),
     address: [text(billing.address, 180), text(billing.street2, 180)].filter(Boolean).join(", ").slice(0, 240),
     postalCode: text(billing.zip, 16),
@@ -308,6 +334,7 @@ function mapContact(raw: unknown, now: string): Customer | null {
     siret: "",
     vatNumber: text(raw.vat_reg_no ?? raw.tax_reg_no, 40),
     notes: text(raw.notes, 4000),
+    contacts,
     archived: text(raw.status, 20).toLowerCase() === "inactive",
     createdAt: now,
     updatedAt: now,

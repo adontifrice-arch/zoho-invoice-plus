@@ -2,9 +2,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { VAT_RATES } from "../../shared/types";
-import type { Settings } from "../../shared/types";
+import type { MailContact, Settings } from "../../shared/types";
 import { useApp } from "../store";
 import { ConfirmDialog, Field, useTitle } from "../ui";
+
+function blankMailContact(): MailContact {
+  return { id: `mail_${Math.random().toString(36).slice(2, 10)}`, name: "", email: "" };
+}
 
 export function SettingsPage() {
   const { state, mutate, notify } = useApp();
@@ -23,7 +27,7 @@ export function SettingsPage() {
           <p className="lede">Ces informations figurent sur les PDF.</p>
         </div>
       </header>
-      <SettingsForm settings={state.settings} today={state.today} />
+      <SettingsForm settings={state.settings} today={state.today} mailConfigured={state.mail?.configured === true} mailFrom={state.mail?.from || ""} />
       <section className="card" style={{ marginTop: 16 }}>
         <h2>Données de démonstration</h2>
         <p className="hint" style={{ marginTop: 8 }}>
@@ -57,9 +61,19 @@ export function SettingsPage() {
   );
 }
 
-function SettingsForm({ settings, today }: { settings: Settings; today: string }) {
+function SettingsForm({
+  settings,
+  today,
+  mailConfigured,
+  mailFrom,
+}: {
+  settings: Settings;
+  today: string;
+  mailConfigured: boolean;
+  mailFrom: string;
+}) {
   const { mutate, notify } = useApp();
-  const [form, setForm] = useState(settings);
+  const [form, setForm] = useState({ ...settings, mailContacts: settings.mailContacts ?? [] });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (key: keyof Settings) => (event: { target: { value: string } }) => {
@@ -67,12 +81,25 @@ function SettingsForm({ settings, today }: { settings: Settings; today: string }
     setForm((current) => ({ ...current, [key]: key === "paymentTermDays" || key === "quoteValidityDays" || key === "defaultVatBps" ? Number(value) : value }));
   };
 
+  function updateMailContact(id: string, patch: Partial<MailContact>) {
+    setForm((current) => ({
+      ...current,
+      mailContacts: current.mailContacts.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await mutate("/api/settings", { method: "PUT", body: JSON.stringify(form) });
+      await mutate("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          ...form,
+          mailContacts: form.mailContacts.filter((entry) => entry.email.trim()),
+        }),
+      });
       notify("Réglages enregistrés.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Enregistrement impossible.");
@@ -120,6 +147,50 @@ function SettingsForm({ settings, today }: { settings: Settings; today: string }
         Prochains numéros : {preview(form.invoicePrefix, settings.nextInvoice)}, {preview(form.quotePrefix, settings.nextQuote)}, {preview(form.creditPrefix, settings.nextCredit)}, {preview(form.paymentPrefix, settings.nextPayment)}.
         Le numéro d'une facture est attribué à l'émission. Supprimer un brouillon ne crée pas de trou.
       </p>
+
+      <div style={{ marginTop: 22 }}>
+        <div className="section-title">
+          <h2>Messagerie</h2>
+        </div>
+        <p className="hint" style={{ marginTop: 8 }}>
+          {mailConfigured
+            ? `Messagerie configurée. Expéditeur : ${mailFrom || "défini dans les secrets GoDaddy"}.`
+            : "Messagerie non configurée. Ajoutez SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS et MAIL_FROM dans les secrets GoDaddy (Preview et Publish), puis redémarrez l'application."}
+        </p>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <div className="section-title">
+          <h2>Contacts génériques (Cc)</h2>
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            onClick={() => setForm((current) => ({ ...current, mailContacts: [...current.mailContacts, blankMailContact()] }))}
+          >
+            Ajouter
+          </button>
+        </div>
+        <p className="hint" style={{ marginTop: 6 }}>Ces adresses sont proposées en copie lors de l'envoi d'une facture ou d'un relevé.</p>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {form.mailContacts.length === 0 ? <p className="empty">Aucun contact générique.</p> : null}
+          {form.mailContacts.map((contact) => (
+            <div key={contact.id} className="form-grid" style={{ padding: 12, border: "1px solid var(--line)", borderRadius: 12 }}>
+              <Field label="Nom"><input value={contact.name} onChange={(event) => updateMailContact(contact.id, { name: event.target.value })} /></Field>
+              <Field label="E-mail"><input type="email" value={contact.email} onChange={(event) => updateMailContact(contact.id, { email: event.target.value })} /></Field>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                <button
+                  className="btn btn-danger btn-small"
+                  type="button"
+                  onClick={() => setForm((current) => ({ ...current, mailContacts: current.mailContacts.filter((entry) => entry.id !== contact.id) }))}
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="actions" style={{ marginTop: 14 }}>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer"}</button>
       </div>

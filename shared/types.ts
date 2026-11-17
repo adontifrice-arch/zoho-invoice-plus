@@ -34,6 +34,20 @@ export type Line = {
   vatBps: number;
 };
 
+export type CustomerContact = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isPrimary: boolean;
+};
+
+export type MailContact = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type Customer = {
   id: string;
   zohoId: string | null;
@@ -49,6 +63,7 @@ export type Customer = {
   siret: string;
   vatNumber: string;
   notes: string;
+  contacts: CustomerContact[];
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -161,6 +176,7 @@ export type Settings = {
   nextQuote: number;
   nextCredit: number;
   nextPayment: number;
+  mailContacts: MailContact[];
 };
 
 export type DataCenterId = "eu" | "com" | "in" | "com.au" | "jp" | "ca" | "sa" | "uk";

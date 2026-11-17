@@ -12,6 +12,7 @@ import { lineToDraft, readLines } from "../lines";
 import type { DraftLine } from "../lines";
 import { LineEditor } from "../lines";
 import { useApp } from "../store";
+import { SendMailDialog } from "../mail-dialog";
 import { ConfirmDialog, Field, InvoiceBadge, Missing, Money, useTitle } from "../ui";
 import { LinesTable, Totals } from "./Quotes";
 
@@ -163,6 +164,7 @@ export function InvoiceDetail() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [mailing, setMailing] = useState(false);
   const [confirm, setConfirm] = useState<null | "issue" | "void" | "delete">(null);
   if (!state) return null;
   if (!invoice) return <Missing title="Facture introuvable" to="/factures" label="Retour aux factures" />;
@@ -205,6 +207,9 @@ export function InvoiceDetail() {
           {invoice.status === "draft" ? <Link className="btn btn-ghost" to={`/factures/${invoice.id}/modifier`}>Modifier</Link> : null}
           {invoice.status === "draft" ? (
             <button className="btn btn-primary" type="button" onClick={() => setConfirm("issue")}>Émettre la facture</button>
+          ) : null}
+          {invoice.status === "issued" ? (
+            <button className="btn btn-ghost" type="button" onClick={() => setMailing(true)}>Envoyer par e-mail</button>
           ) : null}
           {invoice.status === "issued" && balance.due > 0 ? (
             <button className="btn btn-primary" type="button" onClick={() => setPaying((value) => !value)}>Enregistrer un paiement</button>
@@ -297,7 +302,7 @@ export function InvoiceDetail() {
           title={confirm === "issue" ? "Émettre cette facture ?" : confirm === "void" ? "Annuler cette facture ?" : "Supprimer ce brouillon ?"}
           body={
             confirm === "issue"
-              ? "Un numéro définitif lui est attribué s'il n'en a pas déjà un. Elle ne sera plus modifiable. L'envoi par e-mail n'est pas encore branché."
+              ? "Un numéro définitif lui est attribué s'il n'en a pas déjà un. Elle ne sera plus modifiable. Vous pourrez ensuite l'envoyer par e-mail."
               : confirm === "void"
                 ? "Le numéro est conservé. La facture reste visible comme annulée."
                 : "Le brouillon sera effacé. Aucun numéro de facture n'a été consommé."
@@ -319,6 +324,17 @@ export function InvoiceDetail() {
               navigate("/factures");
             }
           })}
+        />
+      ) : null}
+      {mailing && customer ? (
+        <SendMailDialog
+          title={`Envoyer la facture ${invoice.number}`}
+          subjectPreview={`Facture ${invoice.number} — ${state.settings.companyName}`}
+          path={`/api/invoices/${invoice.id}/email`}
+          customer={customer}
+          genericContacts={state.settings.mailContacts ?? []}
+          onClose={() => setMailing(false)}
+          onSent={() => setMailing(false)}
         />
       ) : null}
     </>

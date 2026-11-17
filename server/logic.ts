@@ -5,10 +5,12 @@ import type {
   Clock,
   CreditNote,
   Customer,
+  CustomerContact,
   Invoice,
   Item,
   Line,
   LineInput,
+  MailContact,
   Payment,
   PaymentMethod,
   Quote,
@@ -39,6 +41,7 @@ export type CustomerInput = {
   siret?: unknown;
   vatNumber?: unknown;
   notes?: unknown;
+  contacts?: unknown;
   archived?: unknown;
 };
 
@@ -211,15 +214,91 @@ function allocate(store: Store, kind: "invoice" | "quote" | "credit" | "payment"
   return { settings, number };
 }
 
+function parseContacts(input: unknown, fallbackEmail: string, fallbackName: string): CustomerContact[] {
+  if (input === undefined) {
+    if (!fallbackEmail) return [];
+    return [
+      {
+        id: newId("ctc"),
+        name: fallbackName,
+        email: assertEmail(fallbackEmail),
+        role: "",
+        isPrimary: true,
+      },
+    ];
+  }
+  if (!Array.isArray(input)) throw new AppError("La liste de contacts est invalide.");
+  if (input.length > 40) throw new AppError("Un client ne peut pas avoir plus de 40 contacts.");
+  const contacts: CustomerContact[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") throw new AppError("Un contact est invalide.");
+    const row = raw as Record<string, unknown>;
+    const email = assertEmail(clip(row.email, 160, "L'e-mail du contact"));
+    if (!email) continue;
+    if (seen.has(email.toLowerCase())) throw new AppError("Deux contacts partagent la même adresse e-mail.");
+    seen.add(email.toLowerCase());
+    contacts.push({
+      id: typeof row.id === "string" && row.id.trim() ? clip(row.id, 40, "L'identifiant du contact") : newId("ctc"),
+      name: clip(row.name, 160, "Le nom du contact"),
+      email,
+      role: clip(row.role, 80, "Le rôle du contact"),
+      isPrimary: row.isPrimary === true,
+    });
+  }
+  if (contacts.length === 0 && fallbackEmail) {
+    contacts.push({
+      id: newId("ctc"),
+      name: fallbackName,
+      email: assertEmail(fallbackEmail),
+      role: "",
+      isPrimary: true,
+    });
+  }
+  if (contacts.length === 0) return [];
+  if (!contacts.some((entry) => entry.isPrimary)) contacts[0].isPrimary = true;
+  let primarySeen = false;
+  return contacts.map((entry) => {
+    if (!entry.isPrimary) return entry;
+    if (primarySeen) return { ...entry, isPrimary: false };
+    primarySeen = true;
+    return entry;
+  });
+}
+
+function parseMailContacts(input: unknown, previous: MailContact[]): MailContact[] {
+  if (input === undefined) return previous;
+  if (!Array.isArray(input)) throw new AppError("Les contacts génériques sont invalides.");
+  if (input.length > 40) throw new AppError("Quarante contacts génériques au maximum.");
+  const contacts: MailContact[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") throw new AppError("Un contact générique est invalide.");
+    const row = raw as Record<string, unknown>;
+    const email = assertEmail(clip(row.email, 160, "L'e-mail du contact générique"));
+    if (!email) continue;
+    if (seen.has(email.toLowerCase())) throw new AppError("Deux contacts génériques partagent la même adresse e-mail.");
+    seen.add(email.toLowerCase());
+    contacts.push({
+      id: typeof row.id === "string" && row.id.trim() ? clip(row.id, 40, "L'identifiant du contact") : newId("mail"),
+      name: clip(row.name, 160, "Le nom du contact générique"),
+      email,
+    });
+  }
+  return contacts;
+}
+
 function customerFrom(input: CustomerInput, previous?: Customer): Omit<Customer, "id" | "createdAt" | "updatedAt" | "zohoId" | "locallyEdited"> {
   const name = clip(input.name, 160, "Le nom");
   const company = clip(input.company, 160, "La société");
   if (!name && !company) throw new AppError("Indiquez un nom ou une société.");
   const country = clip(input.country, 80, "Le pays") || "France";
+  const contacts = parseContacts(input.contacts, clip(input.email, 160, "L'e-mail"), name);
+  const primary = contacts.find((entry) => entry.isPrimary) ?? contacts[0];
   return {
     name,
     company,
-    email: assertEmail(clip(input.email, 160, "L'e-mail")),
+    email: primary?.email || assertEmail(clip(input.email, 160, "L'e-mail")),
     phone: clip(input.phone, 40, "Le téléphone"),
     address: clip(input.address, 240, "L'adresse"),
     postalCode: clip(input.postalCode, 16, "Le code postal"),
@@ -228,6 +307,7 @@ function customerFrom(input: CustomerInput, previous?: Customer): Omit<Customer,
     siret: clip(input.siret, 40, "Le SIRET"),
     vatNumber: clip(input.vatNumber, 40, "Le numéro de TVA"),
     notes: clip(input.notes, 4000, "Les notes"),
+    contacts,
     archived: typeof input.archived === "boolean" ? input.archived : (previous?.archived ?? false),
   };
 }
@@ -805,6 +885,7 @@ export function updateSettings(store: Store, input: Partial<Record<keyof Setting
     quotePrefix: prefixOf(input.quotePrefix, current.quotePrefix),
     creditPrefix: prefixOf(input.creditPrefix, current.creditPrefix),
     paymentPrefix: prefixOf(input.paymentPrefix, current.paymentPrefix),
+    mailContacts: parseMailContacts(input.mailContacts, current.mailContacts ?? []),
   };
   return { ...store, settings };
 }

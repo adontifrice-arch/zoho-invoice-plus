@@ -4,9 +4,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { cityLine, customerSubtitle, customerTitle, formatDate, formatMoney } from "../../shared/format";
 import { documentTotals } from "../../shared/money";
 import { openDueByCurrency } from "../../shared/stats";
-import type { Customer } from "../../shared/types";
+import type { Customer, CustomerContact } from "../../shared/types";
+import { SendMailDialog } from "../mail-dialog";
 import { useApp } from "../store";
 import { ConfirmDialog, Field, InvoiceBadge, Missing, Money, QuoteBadge, useTitle } from "../ui";
+
+function blankContact(primary = false): CustomerContact {
+  return { id: `tmp_${Math.random().toString(36).slice(2, 10)}`, name: "", email: "", role: "", isPrimary: primary };
+}
 
 export function CustomerList() {
   const { state } = useApp();
@@ -106,10 +111,15 @@ function CustomerFields({
   mutate: ReturnType<typeof useApp>["mutate"];
   notify: (message: string) => void;
 }) {
+  const initialContacts =
+    customer?.contacts?.length
+      ? customer.contacts
+      : customer?.email
+        ? [{ id: "ctc_primary", name: customer.name, email: customer.email, role: "", isPrimary: true }]
+        : [blankContact(true)];
   const [form, setForm] = useState({
     company: customer?.company ?? "",
     name: customer?.name ?? "",
-    email: customer?.email ?? "",
     phone: customer?.phone ?? "",
     address: customer?.address ?? "",
     postalCode: customer?.postalCode ?? "",
@@ -119,16 +129,33 @@ function CustomerFields({
     vatNumber: customer?.vatNumber ?? "",
     notes: customer?.notes ?? "",
   });
+  const [contacts, setContacts] = useState<CustomerContact[]>(initialContacts);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (key: keyof typeof form) => (event: { target: { value: string } }) => setForm((current) => ({ ...current, [key]: event.target.value }));
+
+  function updateContact(id: string, patch: Partial<CustomerContact>) {
+    setContacts((current) =>
+      current.map((entry) => {
+        if (entry.id !== id) {
+          return patch.isPrimary ? { ...entry, isPrimary: false } : entry;
+        }
+        return { ...entry, ...patch };
+      }),
+    );
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const body = JSON.stringify(form);
+      const primary = contacts.find((entry) => entry.isPrimary) ?? contacts[0];
+      const body = JSON.stringify({
+        ...form,
+        email: primary?.email ?? "",
+        contacts: contacts.filter((entry) => entry.email.trim()),
+      });
       if (customer) {
         await mutate(`/api/customers/${customer.id}`, { method: "PUT", body });
         notify("Client mis à jour.");
@@ -157,8 +184,7 @@ function CustomerFields({
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="form-grid" style={{ marginTop: error ? 12 : 0 }}>
           <Field label="Société"><input value={form.company} onChange={set("company")} /></Field>
-          <Field label="Contact"><input value={form.name} onChange={set("name")} /></Field>
-          <Field label="E-mail"><input type="email" value={form.email} onChange={set("email")} /></Field>
+          <Field label="Nom affiché"><input value={form.name} onChange={set("name")} /></Field>
           <Field label="Téléphone"><input value={form.phone} onChange={set("phone")} /></Field>
           <Field label="Adresse" className="span-2"><input value={form.address} onChange={set("address")} /></Field>
           <Field label="Code postal"><input value={form.postalCode} onChange={set("postalCode")} /></Field>
@@ -167,6 +193,35 @@ function CustomerFields({
           <Field label="SIRET"><input value={form.siret} onChange={set("siret")} /></Field>
           <Field label="Numéro de TVA"><input value={form.vatNumber} onChange={set("vatNumber")} /></Field>
           <Field label="Notes" className="span-2"><textarea value={form.notes} onChange={set("notes")} /></Field>
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <div className="section-title">
+            <h2>Contacts e-mail</h2>
+            <button className="btn btn-ghost btn-small" type="button" onClick={() => setContacts((current) => [...current, blankContact(current.length === 0)])}>Ajouter</button>
+          </div>
+          <p className="hint" style={{ marginTop: 6 }}>Le contact principal reçoit les factures par défaut. Les autres peuvent être mis en copie.</p>
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            {contacts.map((contact) => (
+              <div key={contact.id} className="form-grid" style={{ padding: 12, border: "1px solid var(--line)", borderRadius: 12 }}>
+                <Field label="Nom"><input value={contact.name} onChange={(event) => updateContact(contact.id, { name: event.target.value })} /></Field>
+                <Field label="E-mail"><input type="email" value={contact.email} onChange={(event) => updateContact(contact.id, { email: event.target.value })} required={contact.isPrimary} /></Field>
+                <Field label="Rôle"><input value={contact.role} onChange={(event) => updateContact(contact.id, { role: event.target.value })} placeholder="Comptabilité, direction…" /></Field>
+                <div style={{ display: "flex", alignItems: "end", gap: 10 }}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                    <input type="radio" name="primary-contact" checked={contact.isPrimary} onChange={() => updateContact(contact.id, { isPrimary: true })} />
+                    Principal
+                  </label>
+                  {contacts.length > 1 ? (
+                    <button className="btn btn-danger btn-small" type="button" onClick={() => setContacts((current) => {
+                      const next = current.filter((entry) => entry.id !== contact.id);
+                      if (!next.some((entry) => entry.isPrimary) && next[0]) next[0] = { ...next[0], isPrimary: true };
+                      return next;
+                    })}>Retirer</button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="actions" style={{ marginTop: 16 }}>
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer"}</button>
@@ -183,6 +238,7 @@ export function CustomerDetail() {
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [mailing, setMailing] = useState(false);
   const customer = state?.customers.find((entry) => entry.id === id);
   useTitle(customer ? customerTitle(customer) : "Client");
   const used = useMemo(() => {
@@ -222,6 +278,8 @@ export function CustomerDetail() {
           <p className="lede">{customerSubtitle(customer) || cityLine(customer) || "Fiche client"}</p>
         </div>
         <div className="actions">
+          <a className="btn btn-ghost" href={`/api/customers/${customer.id}/statement/pdf`} target="_blank" rel="noreferrer">Voir le relevé</a>
+          <button className="btn btn-ghost" type="button" onClick={() => setMailing(true)}>Envoyer le relevé</button>
           <Link className="btn btn-ghost" to={`/devis/nouveau?client=${customer.id}`}>Nouveau devis</Link>
           <Link className="btn btn-primary" to={`/factures/nouvelle?client=${customer.id}`}>Nouvelle facture</Link>
         </div>
@@ -233,13 +291,28 @@ export function CustomerDetail() {
             {customer.archived ? <span className="badge">Archivé</span> : null}
           </div>
           <dl className="dl" style={{ marginTop: 12 }}>
-            <dt>E-mail</dt><dd>{customer.email || "—"}</dd>
             <dt>Téléphone</dt><dd>{customer.phone || "—"}</dd>
             <dt>Adresse</dt><dd>{[customer.address, cityLine(customer)].filter(Boolean).join(", ") || "—"}</dd>
             <dt>SIRET</dt><dd>{customer.siret || "—"}</dd>
             <dt>TVA</dt><dd>{customer.vatNumber || "—"}</dd>
             <dt>Notes</dt><dd>{customer.notes || "—"}</dd>
           </dl>
+          <h3 style={{ marginTop: 16, fontSize: 15 }}>Contacts</h3>
+          {(customer.contacts?.length ? customer.contacts : customer.email ? [{ id: "legacy", name: customer.name, email: customer.email, role: "", isPrimary: true }] : []).length === 0 ? (
+            <p className="empty" style={{ marginTop: 8 }}>Aucun contact e-mail.</p>
+          ) : (
+            <ul style={{ marginTop: 8, paddingLeft: 18 }}>
+              {(customer.contacts?.length ? customer.contacts : [{ id: "legacy", name: customer.name, email: customer.email, role: "", isPrimary: true }]).map((contact) => (
+                <li key={contact.id} style={{ marginBottom: 4 }}>
+                  <strong>{contact.name || contact.email}</strong>
+                  {contact.role ? ` · ${contact.role}` : ""}
+                  {" — "}
+                  {contact.email || "—"}
+                  {contact.isPrimary ? <span className="badge" style={{ marginLeft: 8 }}>Principal</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="actions" style={{ marginTop: 16 }}>
             <Link className="btn btn-ghost btn-small" to={`/clients/${customer.id}/modifier`}>Modifier</Link>
             {customer.archived ? (
@@ -290,6 +363,17 @@ export function CustomerDetail() {
           busy={busy}
           onClose={() => setConfirm(false)}
           onConfirm={() => remove().catch(() => setConfirm(false))}
+        />
+      ) : null}
+      {mailing ? (
+        <SendMailDialog
+          title={`Envoyer le relevé — ${customerTitle(customer)}`}
+          subjectPreview={`Relevé de compte — ${state.settings.companyName}`}
+          path={`/api/customers/${customer.id}/statement/email`}
+          customer={customer}
+          genericContacts={state.settings.mailContacts ?? []}
+          onClose={() => setMailing(false)}
+          onSent={() => setMailing(false)}
         />
       ) : null}
     </>

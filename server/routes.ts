@@ -30,10 +30,12 @@ import {
   voidInvoice,
 } from "./logic.js";
 import type { CreditInput, CustomerInput, DocumentInput, ItemInput, PaymentInput } from "./logic.js";
-import { creditModel, invoiceModel, quoteModel, renderPdf } from "./pdf.js";
+import { mailStatus, sendMail, uniqueEmails } from "./mail.js";
+import { creditModel, invoiceModel, quoteModel, renderPdf, statementModel } from "./pdf.js";
 import { readStore, resetStore, saveStore, storageReport } from "./store.js";
 import { beginOAuth, disconnectZoho, finishOAuth, forgetZoho, importFromZoho, importZohoBundle, saveZohoConfig, selectOrganization } from "./zoho.js";
 import { toPublicZoho } from "../shared/zoho-public.js";
+import { customerTitle } from "../shared/format.js";
 
 export const router = Router();
 
@@ -42,7 +44,15 @@ function param(value: string | string[]): string {
 }
 
 function stateBody(store: Store = readStore()) {
-  return { today: systemClock().today, ...store, zoho: toPublicZoho(store.zoho) };
+  return { today: systemClock().today, ...store, zoho: toPublicZoho(store.zoho), mail: mailStatus() };
+}
+
+function recipientsFrom(body: unknown): { to: string[]; cc: string[] } {
+  const raw = body && typeof body === "object" ? (body as { to?: unknown; cc?: unknown }) : {};
+  const to = uniqueEmails(raw.to);
+  const cc = uniqueEmails(raw.cc);
+  if (to.length === 0) throw new AppError("Indiquez au moins un destinataire.");
+  return { to, cc: cc.filter((email) => !to.includes(email)) };
 }
 
 function queryText(value: unknown): string {
@@ -64,6 +74,10 @@ router.get("/health", (_req, res) => {
 
 router.get("/storage", (_req, res) => {
   res.json(storageReport());
+});
+
+router.get("/mail/status", (_req, res) => {
+  res.json(mailStatus());
 });
 
 router.get("/state", (_req, res) => {
@@ -111,6 +125,42 @@ router.delete("/customers/:id", (req, res) => {
   const result = removeCustomer(readStore(), param(req.params.id), systemClock());
   saveStore(result.store);
   res.json({ ...stateBody(), deleted: result.deleted, archived: result.archived });
+});
+
+router.get("/customers/:id/statement/pdf", async (req, res) => {
+  const store = readStore();
+  const customer = store.customers.find((entry) => entry.id === param(req.params.id));
+  if (!customer) throw new AppError("Client introuvable.", 404);
+  const pdf = await renderPdf(store, statementModel(store, customer.id, systemClock().today));
+  sendPdf(res, `Releve-${customerTitle(customer)}.pdf`, pdf);
+});
+
+router.post("/customers/:id/statement/email", async (req, res) => {
+  const store = readStore();
+  const customer = store.customers.find((entry) => entry.id === param(req.params.id));
+  if (!customer) throw new AppError("Client introuvable.", 404);
+  const { to, cc } = recipientsFrom(req.body);
+  const pdf = await renderPdf(store, statementModel(store, customer.id, systemClock().today));
+  const title = customerTitle(customer);
+  await sendMail({
+    to,
+    cc,
+    replyTo: store.settings.email || undefined,
+    subject: `Relevé de compte — ${store.settings.companyName}`,
+    text: [
+      `Bonjour,`,
+      ``,
+      `Veuillez trouver ci-joint le relevé de compte de ${title}.`,
+      ``,
+      `Cordialement,`,
+      store.settings.companyName,
+      store.settings.email ? store.settings.email : "",
+    ]
+      .filter((line) => line !== undefined)
+      .join("\n"),
+    attachments: [{ filename: `Releve-${title.replace(/[^\w.\-]+/g, "_")}.pdf`, content: pdf }],
+  });
+  res.json({ ok: true, to, cc });
 });
 
 router.post("/items", (req, res) => {
@@ -217,6 +267,33 @@ router.get("/invoices/:id/pdf", async (req, res) => {
   const pdf = await renderPdf(store, invoiceModel(store, invoice));
   const name = invoice.number || "brouillon";
   sendPdf(res, `Facture-${name}.pdf`, pdf);
+});
+
+router.post("/invoices/:id/email", async (req, res) => {
+  const store = readStore();
+  const invoice = store.invoices.find((entry) => entry.id === param(req.params.id));
+  if (!invoice) throw new AppError("Facture introuvable.", 404);
+  if (invoice.status !== "issued") throw new AppError("Seule une facture émise peut être envoyée.");
+  const { to, cc } = recipientsFrom(req.body);
+  const pdf = await renderPdf(store, invoiceModel(store, invoice));
+  const customer = store.customers.find((entry) => entry.id === invoice.customerId);
+  await sendMail({
+    to,
+    cc,
+    replyTo: store.settings.email || undefined,
+    subject: `Facture ${invoice.number} — ${store.settings.companyName}`,
+    text: [
+      `Bonjour,`,
+      ``,
+      `Veuillez trouver ci-joint la facture ${invoice.number}${customer ? ` destinée à ${customerTitle(customer)}` : ""}.`,
+      ``,
+      `Cordialement,`,
+      store.settings.companyName,
+      store.settings.email ? store.settings.email : "",
+    ].join("\n"),
+    attachments: [{ filename: `Facture-${invoice.number}.pdf`, content: pdf }],
+  });
+  res.json({ ok: true, to, cc });
 });
 
 router.post("/invoices/:id/credit-notes", (req, res) => {

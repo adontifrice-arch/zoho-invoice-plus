@@ -28,6 +28,8 @@ type Row = {
 
 type Total = { label: string; value: string; strong?: boolean; tone?: "pine" | "clay" };
 
+type Column = { label: string; width: number; align: "left" | "right" };
+
 type PdfModel = {
   title: string;
   number: string;
@@ -36,6 +38,7 @@ type PdfModel = {
   meta: { label: string; value: string }[];
   customerLabel: string;
   customer: string[];
+  columns?: Column[];
   rows: Row[];
   totals: Total[];
   blocks: { title: string; text: string }[];
@@ -195,6 +198,63 @@ export function quoteModel(store: Store, quote: Quote): PdfModel {
   };
 }
 
+export function statementModel(store: Store, customerId: string, today: string): PdfModel {
+  const customer = store.customers.find((entry) => entry.id === customerId);
+  if (!customer) throw new Error("Client introuvable");
+  const invoices = store.invoices
+    .filter((invoice) => invoice.customerId === customerId && invoice.status === "issued")
+    .sort((a, b) => a.issueDate.localeCompare(b.issueDate) || a.number.localeCompare(b.number));
+  const dueByCurrency = new Map<string, number>();
+  const rows: Row[] = invoices.map((invoice) => {
+    const currency = invoice.currencyCode || "EUR";
+    const money = (cents: number) => formatMoneyPlain(cents, currency);
+    const totals = documentTotals(invoice.lines);
+    const balance = invoiceBalance(invoice, store.creditNotes, store.payments);
+    dueByCurrency.set(currency, (dueByCurrency.get(currency) || 0) + balance.due);
+    return {
+      description: invoice.number,
+      quantity: formatDate(invoice.issueDate),
+      unit: formatDate(invoice.dueDate),
+      unitPrice: money(totals.ttc),
+      vat: money(balance.paid + balance.credited),
+      amount: money(balance.due),
+    };
+  });
+  const totals: Total[] = [...dueByCurrency.entries()].map(([code, cents]) => ({
+    label: dueByCurrency.size > 1 ? `Reste dû (${code})` : "Reste dû",
+    value: formatMoneyPlain(cents, code),
+    strong: true,
+    tone: cents > 0 ? "clay" : "pine",
+  }));
+  if (totals.length === 0) {
+    totals.push({ label: "Reste dû", value: formatMoneyPlain(0, "EUR"), strong: true, tone: "pine" });
+  }
+  const width = 503;
+  return {
+    title: "RELEVÉ",
+    number: customerTitle(customer),
+    stamp: null,
+    seller: sellerLines(store),
+    meta: [{ label: "Date", value: formatDate(today) }],
+    customerLabel: "CLIENT",
+    customer: partyLines(store, customerId),
+    columns: [
+      { label: "Facture", width: 110, align: "left" },
+      { label: "Date", width: 72, align: "left" },
+      { label: "Échéance", width: 72, align: "left" },
+      { label: "TTC", width: 80, align: "right" },
+      { label: "Réglé", width: 80, align: "right" },
+      { label: "Reste", width: width - 414, align: "right" },
+    ],
+    rows,
+    totals,
+    blocks: invoices.length
+      ? []
+      : [{ title: "Situation", text: "Aucune facture émise pour ce client." }],
+    footer: footerOf(store),
+  };
+}
+
 export function creditModel(store: Store, note: CreditNote): PdfModel {
   const invoice = store.invoices.find((entry) => entry.id === note.invoiceId);
   const currency = invoice?.currencyCode || "EUR";
@@ -304,13 +364,13 @@ function draw(doc: PDFKit.PDFDocument, company: string, model: PdfModel): void {
   });
   y += 14;
 
-  const columns = [
-    { label: "Description", width: 210, align: "left" as const },
-    { label: "Qté", width: 40, align: "right" as const },
-    { label: "Unité", width: 52, align: "left" as const },
-    { label: "PU HT", width: 70, align: "right" as const },
-    { label: "TVA", width: 42, align: "right" as const },
-    { label: "Montant HT", width: width - 414, align: "right" as const },
+  const columns: Column[] = model.columns ?? [
+    { label: "Description", width: 210, align: "left" },
+    { label: "Qté", width: 40, align: "right" },
+    { label: "Unité", width: 52, align: "left" },
+    { label: "PU HT", width: 70, align: "right" },
+    { label: "TVA", width: 42, align: "right" },
+    { label: "Montant HT", width: width - 414, align: "right" },
   ];
 
   const drawHeader = () => {
