@@ -21,7 +21,7 @@ type SmtpEndpoint = {
   port: number;
   secure: boolean;
   requireTLS?: boolean;
-  noAuth?: boolean;
+  ignoreTLS?: boolean;
 };
 
 function env(name: string): string {
@@ -53,15 +53,16 @@ function requireConfig(): { host: string; port: number; user: string; pass: stri
 }
 
 function endpointKey(endpoint: SmtpEndpoint): string {
-  return `${endpoint.host}:${endpoint.port}:${endpoint.secure ? "ssl" : "plain"}:${endpoint.noAuth ? "open" : "auth"}`;
+  return `${endpoint.host}:${endpoint.port}:${endpoint.secure ? "ssl" : "plain"}:${endpoint.ignoreTLS ? "notls" : "tls"}`;
 }
 
 function smtpEndpoints(host: string, port: number): SmtpEndpoint[] {
-  // Atrium refuses outbound 465/587 (EACCES). GoDaddy shared hosting relays on port 25 without auth.
+  // Atrium refuses 465/587. Port 25 to the authenticated GoDaddy server is the path that can deliver.
+  // The open relay answers 250 and then drops the message, so it is not used.
   const candidates: SmtpEndpoint[] = [
-    { host: "relay-hosting.secureserver.net", port: 25, secure: false, noAuth: true },
     { host, port: 25, secure: false },
-    { host, port, secure: port === 465, requireTLS: port !== 465 },
+    { host, port: 25, secure: false, ignoreTLS: true },
+    { host, port, secure: port === 465, requireTLS: port !== 465 && port !== 25 },
     { host, port: 587, secure: false, requireTLS: true },
     { host, port: 465, secure: true },
   ];
@@ -76,10 +77,16 @@ function smtpEndpoints(host: string, port: number): SmtpEndpoint[] {
   return out;
 }
 
+function isAuthFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /535|invalid login|authentication failed|username and password not accepted/i.test(message);
+}
+
 function isRetryable(error: unknown): boolean {
+  if (isAuthFailure(error)) return false;
   const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
   const message = error instanceof Error ? error.message : String(error);
-  return /EACCES|ECONNREFUSED|ETIMEDOUT|ESOCKET|ECONNRESET|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|timeout|blocked/i.test(`${code} ${message}`);
+  return /EACCES|ECONNREFUSED|ETIMEDOUT|ESOCKET|ECONNRESET|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|ETLS|timeout|blocked|certificate|tls/i.test(`${code} ${message}`);
 }
 
 async function sendWithEndpoint(
@@ -94,13 +101,14 @@ async function sendWithEndpoint(
     port: endpoint.port,
     secure: endpoint.secure,
     requireTLS: endpoint.requireTLS || false,
-    auth: endpoint.noAuth ? undefined : { user: auth.user, pass: auth.pass },
-    connectionTimeout: 8_000,
-    greetingTimeout: 8_000,
-    socketTimeout: 20_000,
+    ignoreTLS: endpoint.ignoreTLS || false,
+    auth: { user: auth.user, pass: auth.pass },
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 30_000,
   });
   try {
-    await transport.sendMail({
+    const info = await transport.sendMail({
       from: auth.from,
       to: to.join(", "),
       cc: cc.length ? cc.join(", ") : undefined,
@@ -113,6 +121,11 @@ async function sendWithEndpoint(
         contentType: file.contentType || "application/pdf",
       })),
     });
+    const rejected = Array.isArray(info.rejected) ? info.rejected.map(String) : [];
+    console.log(`E-mail via ${endpoint.host}:${endpoint.port} response=${info.response || ""} accepted=${JSON.stringify(info.accepted)} rejected=${JSON.stringify(rejected)}`);
+    if (rejected.length > 0) {
+      throw new Error(`Destinataires refusés : ${rejected.join(", ")}`);
+    }
   } finally {
     transport.close();
   }
@@ -129,9 +142,7 @@ export async function sendMail(message: OutboundMail): Promise<void> {
   for (const endpoint of endpoints) {
     try {
       await sendWithEndpoint(endpoint, config, message, to, cc);
-      if (endpoint.port !== config.port || endpoint.host !== config.host) {
-        console.log(`E-mail envoyé via ${endpoint.host}:${endpoint.port}`);
-      }
+      console.log(`E-mail envoyé via ${endpoint.host}:${endpoint.port}`);
       return;
     } catch (error) {
       const detail = error instanceof Error ? error.message : "envoi impossible";
@@ -143,7 +154,7 @@ export async function sendMail(message: OutboundMail): Promise<void> {
 
   console.error("Envoi e-mail échoué:", lastDetail);
   throw new AppError(
-    "L'e-mail n'a pas pu être envoyé : Atrium bloque le SMTP sortant (ports 465 et 587). Le relais GoDaddy n'a pas abouti non plus.",
+    "L'e-mail n'a pas pu être envoyé. Le serveur GoDaddy a refusé la connexion authentifiée.",
     503,
   );
 }
