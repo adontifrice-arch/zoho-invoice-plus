@@ -5,18 +5,31 @@ import type { Store } from "../shared/types.js";
 import { normalizeStore } from "./normalize.js";
 import { seedStore } from "./seed.js";
 
-function resolveStoreFile(): string {
-  const override = process.env.STORE_FILE;
-  if (override) return override;
-  const durable = "/private/atrium-store.json";
-  const local = path.join(process.cwd(), "data", "store.json");
-  if (fs.existsSync(durable)) return durable;
-  if (fs.existsSync(local)) return local;
-  if (fs.existsSync("/private")) return durable;
-  return local;
+const PRIVATE_FILE = "/private/atrium-store.json";
+
+function localFile(): string {
+  return path.join(process.cwd(), "data", "store.json");
 }
 
-const file = resolveStoreFile();
+function privateWritable(): boolean {
+  try {
+    if (!fs.existsSync("/private")) return false;
+    const probe = "/private/.atrium-probe";
+    fs.writeFileSync(probe, "ok");
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function richness(store: Store): number {
+  const imported = store.customers.filter((row) => row.zohoId).length;
+  return imported * 1_000_000 + store.invoices.length * 1_000 + store.customers.length;
+}
+
+const durable = privateWritable();
+const file = process.env.STORE_FILE || (durable ? PRIVATE_FILE : localFile());
 
 function isStore(value: unknown): value is Store {
   if (!value || typeof value !== "object") return false;
@@ -40,25 +53,51 @@ function atomicWrite(store: Store): void {
   fs.renameSync(tmp, file);
 }
 
-function load(): Store {
+function readStoreFile(candidate: string): Store | null {
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!isStore(parsed)) throw new Error("invalid store");
-    const normalized = normalizeStore(parsed);
-    if (JSON.stringify(normalized) !== JSON.stringify(parsed)) atomicWrite(normalized);
-    return normalized;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ENOENT") {
-      console.error("Magasin illisible, rechargement des données de démonstration.");
-    }
-    const seeded = seedStore(systemClock());
-    atomicWrite(seeded);
-    return seeded;
+    const parsed: unknown = JSON.parse(fs.readFileSync(candidate, "utf8"));
+    if (!isStore(parsed)) return null;
+    return normalizeStore(parsed);
+  } catch {
+    return null;
   }
 }
 
+function load(): Store {
+  const candidates = [process.env.STORE_FILE, PRIVATE_FILE, localFile()].filter(
+    (candidate): candidate is string => Boolean(candidate),
+  );
+  let best: Store | null = null;
+  for (const candidate of candidates) {
+    const found = readStoreFile(candidate);
+    if (found && (!best || richness(found) > richness(best))) best = found;
+  }
+  if (!best) {
+    console.error("Magasin absent, chargement des données de démonstration.");
+    best = seedStore(systemClock());
+  }
+  const serialized = JSON.stringify(best, null, 2);
+  let current = "";
+  try {
+    current = fs.readFileSync(file, "utf8");
+  } catch {
+    current = "";
+  }
+  if (current !== serialized) atomicWrite(best);
+  console.log(durable || file.startsWith("/private/") ? "Magasin : stockage privé" : "Magasin : dossier de l'application");
+  return best;
+}
+
 let state = load();
+
+export function storageReport(): { location: "private" | "app"; company: string; customers: number; invoices: number } {
+  return {
+    location: file.startsWith("/private/") ? "private" : "app",
+    company: state.settings.companyName,
+    customers: state.customers.length,
+    invoices: state.invoices.length,
+  };
+}
 
 export function readStore(): Store {
   return state;

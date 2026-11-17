@@ -31,7 +31,7 @@ import {
 } from "./logic.js";
 import type { CreditInput, CustomerInput, DocumentInput, ItemInput, PaymentInput } from "./logic.js";
 import { creditModel, invoiceModel, quoteModel, renderPdf } from "./pdf.js";
-import { readStore, resetStore, saveStore } from "./store.js";
+import { readStore, resetStore, saveStore, storageReport } from "./store.js";
 import { beginOAuth, disconnectZoho, finishOAuth, forgetZoho, importFromZoho, importZohoBundle, saveZohoConfig, selectOrganization } from "./zoho.js";
 import { toPublicZoho } from "../shared/zoho-public.js";
 
@@ -60,6 +60,10 @@ function sendPdf(res: Response, filename: string, pdf: Buffer): void {
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+router.get("/storage", (_req, res) => {
+  res.json(storageReport());
 });
 
 router.get("/state", (_req, res) => {
