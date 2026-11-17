@@ -24,10 +24,27 @@ export function SettingsPage() {
         <div>
           <p className="kicker">Société</p>
           <h1>Réglages</h1>
-          <p className="lede">Ces informations figurent sur les PDF.</p>
+          <p className="lede">Off The Grid est l'entreprise émettrice. Ces informations figurent sur les PDF.</p>
         </div>
       </header>
       <SettingsForm settings={state.settings} today={state.today} mailConfigured={state.mail?.configured === true} mailFrom={state.mail?.from || ""} />
+      <section className="card" style={{ marginTop: 16 }}>
+        <h2>Installer sur le téléphone</h2>
+        <p className="hint" style={{ marginTop: 8 }}>
+          Atrium est une application privée (deux comptes Google autorisés). Ouvrez l’URL HTTPS de l’app, puis :
+        </p>
+        <ul className="steps">
+          <li>
+            <strong>Android (Chrome)</strong> — menu ⋮ → Installer l’application / Ajouter à l’écran d’accueil.
+          </li>
+          <li>
+            <strong>iPhone (Safari)</strong> — bouton Partager → Sur l’écran d’accueil.
+          </li>
+        </ul>
+        <p className="hint" style={{ marginTop: 8 }}>
+          Connectez-vous ensuite avec un compte Google autorisé. Sans HTTPS, l’installation n’est pas proposée hors localhost.
+        </p>
+      </section>
       <section className="card" style={{ marginTop: 16 }}>
         <h2>Données de démonstration</h2>
         <p className="hint" style={{ marginTop: 8 }}>

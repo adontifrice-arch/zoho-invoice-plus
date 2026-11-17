@@ -2,9 +2,44 @@ import { Link } from "react-router-dom";
 import { customerTitle, formatMoney, formatWeekdayDate, relativeDay } from "../../shared/format";
 import { documentTotals, invoiceBalance, invoiceViewStatus } from "../../shared/money";
 import { dashboard } from "../../shared/stats";
+import type { MonthBar } from "../../shared/stats";
 import { paymentMethodLabel } from "../../shared/labels";
 import { useApp } from "../store";
 import { InvoiceBadge, Money, QuoteBadge, useTitle } from "../ui";
+
+function MonthChart({ months }: { months: MonthBar[] }) {
+  const peak = Math.max(1, ...months.flatMap((month) => [month.billed, month.collected]));
+  return (
+    <div className="chart" role="img" aria-label="Facturé et encaissé sur six mois">
+      {months.map((month) => (
+        <div className="chart-col" key={month.key}>
+          <div className="chart-bars">
+            <div className="chart-bar billed" style={{ height: `${Math.max(2, (month.billed / peak) * 132)}px` }} title={formatMoney(month.billed)} />
+            <div className="chart-bar collected" style={{ height: `${Math.max(2, (month.collected / peak) * 132)}px` }} title={formatMoney(month.collected)} />
+          </div>
+          <span>{month.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Aging({ current, overdue, currency }: { current: number; overdue: number; currency: string }) {
+  const total = current + overdue;
+  const currentWidth = total === 0 ? 0 : (current / total) * 100;
+  const overdueWidth = total === 0 ? 0 : (overdue / total) * 100;
+  return (
+    <>
+      <div className="aging" aria-hidden="true">
+        <span className="current" style={{ width: `${currentWidth}%` }} />
+        <span className="late" style={{ width: `${overdueWidth}%` }} />
+      </div>
+      <p className="hint">À échoir {formatMoney(current, currency)}</p>
+      <p className="hint" style={{ color: "var(--clay)" }}>En retard {formatMoney(overdue, currency)}</p>
+      {total === 0 ? <p className="empty">Aucune créance ouverte dans la devise de base.</p> : null}
+    </>
+  );
+}
 
 function capitalise(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -73,6 +108,27 @@ export function Dashboard() {
           Les totaux ci-dessus sont en {stats.baseCurrency}. Soldes ouverts dans d'autres devises, sans conversion : {stats.foreignUnpaid.map((row) => formatMoney(row.cents, row.code)).join(", ")}.
         </p>
       ) : null}
+
+      <div className="overview">
+        <section className="card">
+          <div className="section-title">
+            <h2>Activité sur 6 mois</h2>
+            <span>{stats.baseCurrency}</span>
+          </div>
+          <MonthChart months={stats.months} />
+          <div className="legend">
+            <span><i className="billed" /> Facturé</span>
+            <span><i className="collected" /> Encaissé</span>
+          </div>
+        </section>
+        <section className="card">
+          <div className="section-title">
+            <h2>Créances ouvertes</h2>
+            <span>{formatMoney(stats.unpaidCents, stats.baseCurrency)}</span>
+          </div>
+          <Aging current={stats.currentCents} overdue={stats.overdueCents} currency={stats.baseCurrency} />
+        </section>
+      </div>
 
       <div className="split">
         <section className="card">

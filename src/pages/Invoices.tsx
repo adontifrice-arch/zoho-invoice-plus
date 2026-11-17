@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { centsToInput, customerTitle, formatDate, parseMoneyToCents } from "../../shared/format";
 import { invoiceStatusLabel, paymentMethodLabel } from "../../shared/labels";
 import { addDays, defaultInvoiceTerms, documentTotals, invoiceBalance, invoiceViewStatus } from "../../shared/money";
 import { PAYMENT_METHODS } from "../../shared/types";
 import type { InvoiceViewStatus, PaymentMethod } from "../../shared/types";
+import { Mark } from "../mark";
 import { DocumentForm } from "../document-form";
 import type { DocumentBody } from "../document-form";
 import { lineToDraft, readLines } from "../lines";
@@ -26,9 +27,10 @@ const FILTERS: { id: "all" | InvoiceViewStatus; label: string }[] = [
   { id: "void", label: "Annulées" },
 ];
 
-export function InvoiceList() {
+export function InvoiceWorkspace() {
   const { state } = useApp();
-  const navigate = useNavigate();
+  const selected = useMatch("/factures/:id");
+  const id = selected?.params.id;
   useTitle("Factures");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
@@ -46,57 +48,40 @@ export function InvoiceList() {
     });
 
   return (
-    <>
-      <header className="page-head">
-        <div>
-          <p className="kicker">Vente</p>
+    <div className="desk">
+      <section className="desk-list">
+        <div className="desk-head">
           <h1>Factures</h1>
-          <p className="lede">Le numéro définitif est donné à l'émission.</p>
         </div>
-        <Link className="btn btn-primary" to="/factures/nouvelle">Nouvelle facture</Link>
-      </header>
-      <div className="toolbar">
-        <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Numéro ou client" aria-label="Rechercher une facture" />
-        <div className="chips">
-          {FILTERS.map((entry) => (
-            <button key={entry.id} type="button" className={filter === entry.id ? "chip is-on" : "chip"} onClick={() => setFilter(entry.id)}>{entry.label}</button>
-          ))}
+        <div className="desk-tools">
+          <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Numéro ou client" aria-label="Rechercher une facture" />
+          <select className="select" value={filter} aria-label="Filtrer les factures" onChange={(event) => setFilter(event.target.value as (typeof FILTERS)[number]["id"])}>
+            {FILTERS.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+          </select>
         </div>
-      </div>
-      <div className="card table-wrap">
-        {rows.length === 0 ? <p className="empty">Aucune facture ne correspond.</p> : (
-          <table>
-            <thead>
-              <tr>
-                <th>Numéro</th>
-                <th>Client</th>
-                <th>Date</th>
-                <th>Échéance</th>
-                <th>Statut</th>
-                <th className="right">Reste</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((invoice) => {
-                const customer = state.customers.find((entry) => entry.id === invoice.customerId);
-                const balance = invoiceBalance(invoice, state.creditNotes, state.payments);
-                return (
-                  <tr key={invoice.id} className="clickable" onClick={() => navigate(`/factures/${invoice.id}`)}>
-                    <td><Link className="num" to={`/factures/${invoice.id}`}>{invoice.number || "Brouillon"}</Link></td>
-                    <td>{customer ? customerTitle(customer) : "—"}</td>
-                    <td>{formatDate(invoice.issueDate)}</td>
-                    <td>{formatDate(invoice.dueDate)}</td>
-                    <td><InvoiceBadge state={state} invoice={invoice} /></td>
-                    <td className="right">{invoice.status === "issued" ? <Money cents={balance.due} currency={invoice.currencyCode} /> : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </>
+        {rows.length === 0 ? <p className="empty">Aucune facture ne correspond.</p> : rows.map((invoice) => {
+          const customer = state.customers.find((entry) => entry.id === invoice.customerId);
+          const balance = invoiceBalance(invoice, state.creditNotes, state.payments);
+          return (
+            <Link className={invoice.id === id ? "inv-row active" : "inv-row"} key={invoice.id} to={`/factures/${invoice.id}`}>
+              <strong>{customer ? customerTitle(customer) : "Client"}</strong>
+              <span className="money">{invoice.status === "issued" ? <Money cents={balance.due} currency={invoice.currencyCode} /> : "—"}</span>
+              <small>{invoice.number || "Brouillon"} · {formatDate(invoice.issueDate)}</small>
+              <InvoiceBadge state={state} invoice={invoice} />
+            </Link>
+          );
+        })}
+      </section>
+      <section className="desk-pane">
+        <Outlet />
+      </section>
+    </div>
   );
+}
+
+export function InvoicePlaceholder() {
+  useTitle("Factures");
+  return <p className="empty">Sélectionnez une facture. Le document s'ouvre ici.</p>;
 }
 
 export function InvoiceEditor() {
@@ -166,6 +151,7 @@ export function InvoiceDetail() {
   const [paying, setPaying] = useState(false);
   const [mailing, setMailing] = useState(false);
   const [confirm, setConfirm] = useState<null | "issue" | "void" | "delete">(null);
+  const [tab, setTab] = useState<"details" | "payments" | "credits">("details");
   if (!state) return null;
   if (!invoice) return <Missing title="Facture introuvable" to="/factures" label="Retour aux factures" />;
 
@@ -244,12 +230,33 @@ export function InvoiceDetail() {
         />
       ) : null}
 
-      <section className="card">
-        <dl className="dl">
-          <dt>Date</dt><dd>{formatDate(invoice.issueDate)}</dd>
-          <dt>Échéance</dt><dd>{formatDate(invoice.dueDate)}</dd>
-          <dt>Statut</dt><dd>{invoiceStatusLabel(status, balance.due)}</dd>
-        </dl>
+      <div className="pane-tabs" role="tablist">
+        <button type="button" className={tab === "details" ? "is-on" : ""} onClick={() => setTab("details")}>Détails</button>
+        <button type="button" className={tab === "payments" ? "is-on" : ""} onClick={() => setTab("payments")}>Paiements</button>
+        <button type="button" className={tab === "credits" ? "is-on" : ""} onClick={() => setTab("credits")}>Avoirs</button>
+      </div>
+
+      {tab === "details" ? (
+      <article className="sheet">
+        <div className="sheet-mark" aria-hidden="true">FACTURE</div>
+        <div className="sheet-top">
+          <div className="sheet-brand">
+            <Mark size={42} />
+            <div>
+              <strong>OFF the GRID</strong>
+              <span>{state.settings.tagline || state.settings.companyName}</span>
+            </div>
+          </div>
+          <dl className="sheet-meta">
+            <dt>Numéro</dt><dd>{invoice.number || "Brouillon"}</dd>
+            <dt>Date</dt><dd>{formatDate(invoice.issueDate)}</dd>
+            <dt>Échéance</dt><dd>{formatDate(invoice.dueDate)}</dd>
+            <dt>Statut</dt><dd>{invoiceStatusLabel(status, balance.due)}</dd>
+          </dl>
+        </div>
+        <h2>Client</h2>
+        <p>{customer ? customerTitle(customer) : "Client introuvable"}</p>
+        {customer ? <p className="hint">{[customer.address, [customer.postalCode, customer.city].filter(Boolean).join(" "), customer.email].filter(Boolean).join(" · ")}</p> : null}
         <LinesTable lines={invoice.lines} currency={invoice.currencyCode} />
         <Totals
           currency={invoice.currencyCode}
@@ -264,9 +271,10 @@ export function InvoiceDetail() {
         />
         {invoice.notes ? <p style={{ marginTop: 16 }}>{invoice.notes}</p> : null}
         {invoice.terms ? <p className="hint" style={{ marginTop: 8 }}>{invoice.terms}</p> : null}
-      </section>
+      </article>
+      ) : null}
 
-      <div className="split" style={{ marginTop: 16 }}>
+      {tab === "payments" ? (
         <section className="card">
           <h2>Paiements</h2>
           {payments.length === 0 ? <p className="empty">Aucun paiement.</p> : payments.map((payment) => (
@@ -285,6 +293,8 @@ export function InvoiceDetail() {
             </div>
           ))}
         </section>
+      ) : null}
+      {tab === "credits" ? (
         <section className="card">
           <h2>Avoirs</h2>
           {credits.length === 0 ? <p className="empty">Aucun avoir.</p> : credits.map((note) => (
@@ -295,7 +305,7 @@ export function InvoiceDetail() {
             </Link>
           ))}
         </section>
-      </div>
+      ) : null}
 
       {confirm ? (
         <ConfirmDialog

@@ -2,7 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { CreditNoteDetail, CreditNoteList } from "./pages/CreditNotes";
 import { CustomerDetail, CustomerForm, CustomerList } from "./pages/Customers";
 import { Dashboard } from "./pages/Dashboard";
-import { CreditNoteForm, InvoiceDetail, InvoiceEditor, InvoiceList } from "./pages/Invoices";
+import { CreditNoteForm, InvoiceDetail, InvoiceEditor, InvoicePlaceholder, InvoiceWorkspace } from "./pages/Invoices";
 import { ItemList } from "./pages/Items";
 import { PaymentList } from "./pages/Payments";
 import { QuoteDetail, QuoteEditor, QuoteList } from "./pages/Quotes";
@@ -29,11 +29,13 @@ export function App() {
             <Route path="devis/nouveau" element={<QuoteEditor />} />
             <Route path="devis/:id" element={<QuoteDetail />} />
             <Route path="devis/:id/modifier" element={<QuoteEditor />} />
-            <Route path="factures" element={<InvoiceList />} />
             <Route path="factures/nouvelle" element={<InvoiceEditor />} />
-            <Route path="factures/:id" element={<InvoiceDetail />} />
             <Route path="factures/:id/modifier" element={<InvoiceEditor />} />
             <Route path="factures/:id/avoir" element={<CreditNoteForm />} />
+            <Route path="factures" element={<InvoiceWorkspace />}>
+              <Route index element={<InvoicePlaceholder />} />
+              <Route path=":id" element={<InvoiceDetail />} />
+            </Route>
             <Route path="avoirs" element={<CreditNoteList />} />
             <Route path="avoirs/:id" element={<CreditNoteDetail />} />
             <Route path="paiements" element={<PaymentList />} />

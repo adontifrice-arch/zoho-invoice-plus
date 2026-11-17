@@ -9,12 +9,12 @@ const SANS_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 const SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
 const SERIF_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf";
 
-const INK = "#1c1915";
-const MUTED = "#6d645b";
-const PINE = "#234237";
-const LINE = "#e3d7c6";
-const BAND = "#f4efe6";
-const CLAY = "#8d3b28";
+const INK = "#1a1f1c";
+const MUTED = "#5c665f";
+const PINE = "#0e5f68";
+const LINE = "#d5cfc3";
+const BAND = "#f3efe6";
+const CLAY = "#8e3b32";
 const MARGIN = 46;
 
 type Row = {

@@ -1,3 +1,4 @@
+import { OTG_CONTACTS, OTG_PROFILE } from "../shared/company.js";
 import { addDays, documentTotals, defaultInvoiceTerms, defaultQuoteTerms } from "../shared/money.js";
 import type { Clock, CreditNote, Invoice, Item, Line, Payment, Quote, Settings, Store } from "../shared/types.js";
 import { emptyZoho } from "../shared/zoho-public.js";
@@ -32,22 +33,7 @@ export function seedStore(clock: Clock): Store {
   };
 
   const settings: Settings = {
-    companyName: "Atelier Lumen",
-    legalForm: "SARL",
-    tagline: "Architecture intérieure",
-    address: "14 rue des Capucins",
-    postalCode: "69001",
-    city: "Lyon",
-    country: "France",
-    email: "bonjour@atelierlumen.fr",
-    phone: "04 72 41 18 90",
-    website: "atelierlumen.fr",
-    siret: "849 302 117 00024",
-    vatNumber: "FR 88 849302117",
-    rcs: "RCS Lyon 849 302 117",
-    capital: "10 000 €",
-    iban: "FR75 3000 4008 3200 0123 4567 896",
-    bic: "BNPAFRPPXXX",
+    ...OTG_PROFILE,
     defaultVatBps: 2000,
     paymentTermDays: 30,
     quoteValidityDays: 30,
@@ -59,7 +45,7 @@ export function seedStore(clock: Clock): Store {
     nextQuote: 10,
     nextCredit: 2,
     nextPayment: 4,
-    mailContacts: [],
+    mailContacts: OTG_CONTACTS.map((contact) => ({ ...contact })),
   };
 
   const invoiceTerms = defaultInvoiceTerms(settings.paymentTermDays);

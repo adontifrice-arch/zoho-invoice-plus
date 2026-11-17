@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { systemClock } from "../shared/clock.js";
+import { withOtgCompany } from "../shared/company.js";
 import type { Store } from "../shared/types.js";
 import { normalizeStore } from "./normalize.js";
 import { seedStore } from "./seed.js";
@@ -76,6 +77,7 @@ function load(): Store {
     console.error("Magasin absent, chargement des données de démonstration.");
     best = seedStore(systemClock());
   }
+  best = { ...best, settings: withOtgCompany(best.settings) };
   const serialized = JSON.stringify(best, null, 2);
   let current = "";
   try {

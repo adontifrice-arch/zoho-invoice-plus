@@ -6,20 +6,27 @@ import { invoiceStatusLabel, QUOTE_STATUS_LABEL } from "../shared/labels";
 import { invoiceBalance, invoiceViewStatus, quoteExpired } from "../shared/money";
 import type { Invoice, Quote } from "../shared/types";
 import { useAccount } from "./auth";
+import { Mark } from "./mark";
 import { useApp } from "./store";
 import type { AppState } from "./store";
 
 const NAV = [
-  { to: "/", label: "Tableau de bord", icon: "home", end: true },
-  { to: "/clients", label: "Clients", icon: "users" },
-  { to: "/articles", label: "Articles", icon: "tag" },
-  { to: "/devis", label: "Devis", icon: "file" },
-  { to: "/factures", label: "Factures", icon: "invoice" },
-  { to: "/avoirs", label: "Avoirs", icon: "credit" },
-  { to: "/paiements", label: "Paiements", icon: "coin" },
-  { to: "/import-zoho", label: "Import Zoho", icon: "cloud" },
-  { to: "/reglages", label: "Réglages", icon: "sliders" },
+  { to: "/", label: "Tableau de bord", icon: "home", end: true, group: "" },
+  { to: "/factures", label: "Factures", icon: "invoice", group: "Ventes" },
+  { to: "/devis", label: "Devis", icon: "file", group: "Ventes" },
+  { to: "/avoirs", label: "Avoirs", icon: "credit", group: "Ventes" },
+  { to: "/paiements", label: "Paiements", icon: "coin", group: "Ventes" },
+  { to: "/clients", label: "Clients", icon: "users", group: "Référentiel" },
+  { to: "/articles", label: "Articles", icon: "tag", group: "Référentiel" },
+  { to: "/import-zoho", label: "Import Zoho", icon: "cloud", group: "Outils" },
+  { to: "/reglages", label: "Réglages", icon: "sliders", group: "Outils" },
 ] as const;
+
+function invoiceDesk(pathname: string): boolean {
+  if (pathname === "/factures") return true;
+  const match = pathname.match(/^\/factures\/([^/]+)$/);
+  return Boolean(match && match[1] !== "nouvelle");
+}
 
 export function Shell() {
   const { state, error, flash, reload } = useApp();
@@ -45,25 +52,36 @@ export function Shell() {
   }
   if (!state) return <div className="loading">Chargement du registre…</div>;
 
-  const initial = state.settings.companyName.trim().charAt(0).toUpperCase() || "L";
+  const bleed = invoiceDesk(location.pathname);
+  let group = "";
   return (
     <div className="app">
       {open ? <button className="scrim" type="button" aria-label="Fermer le menu" onClick={() => setOpen(false)} /> : null}
       <aside className={open ? "sidebar open" : "sidebar"}>
-        <div className="brand">
-          <span className="mark">{initial}</span>
+        <Link className="brand" to="/">
+          <Mark tone="paper" />
           <span>
-            <strong>{state.settings.companyName}</strong>
+            <strong>OFF<i>the</i>GRID</strong>
             <small>Facturation</small>
           </span>
+        </Link>
+        <div className="nav-new">
+          <Link className="btn btn-primary" to="/factures/nouvelle">Nouvelle facture</Link>
         </div>
         <nav className="nav">
-          {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} end={"end" in item ? item.end : false} className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-              <Icon name={item.icon} />
-              {item.label}
-            </NavLink>
-          ))}
+          {NAV.map((item) => {
+            const label = item.group !== group ? item.group : "";
+            group = item.group;
+            return (
+              <span key={item.to}>
+                {label ? <div className="nav-label">{label}</div> : null}
+                <NavLink to={item.to} end={"end" in item ? item.end : false} className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+                  <Icon name={item.icon} />
+                  {item.label}
+                </NavLink>
+              </span>
+            );
+          })}
         </nav>
         <div className="sidebar-foot">
           <p>{account}</p>
@@ -85,9 +103,9 @@ export function Shell() {
           <button className="btn btn-ghost btn-small" type="button" onClick={() => setOpen(true)}>
             Menu
           </button>
-          <strong>{state.settings.companyName}</strong>
+          <strong>Off The Grid</strong>
         </div>
-        <div className="content">
+        <div className={bleed ? "content bleed" : "content"}>
           <div className="page">
             <Outlet />
           </div>
